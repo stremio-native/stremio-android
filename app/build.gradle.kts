@@ -153,7 +153,7 @@ dependencies {
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-crashlytics")
     implementation("com.google.firebase:firebase-perf")
-    implementation("com.posthog:posthog-android:3.51.0")
+    implementation("com.posthog:posthog-android:3.56.2")
     testImplementation("junit:junit:4.13.2")
 }
 data class StreamServerTarget(
