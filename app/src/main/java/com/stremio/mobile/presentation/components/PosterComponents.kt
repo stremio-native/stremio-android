@@ -17,19 +17,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Movie
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -46,7 +47,6 @@ import coil3.request.crossfade
 import com.stremio.mobile.core.theme.AccentPurple
 import com.stremio.mobile.core.theme.CardFallback
 import com.stremio.mobile.core.theme.MutedText
-import com.stremio.mobile.core.theme.ScreenGutter
 import com.stremio.mobile.data.model.CatalogItem
 import com.stremio.mobile.data.model.CatalogShelf
 
@@ -62,28 +62,30 @@ fun PosterShelf(
     mode: ShelfMode,
     onItemClick: (CatalogItem) -> Unit,
     onSeeAllClick: (() -> Unit)? = null,
+    initialFocusRequester: FocusRequester? = null,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+    val isTv = LocalIsTv.current
+    Column(verticalArrangement = Arrangement.spacedBy(tvListItemSpacing(20.dp))) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = ScreenGutter, end = 6.dp),
+                .padding(start = contentGutter(), end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = shelf.title,
                 modifier = Modifier.weight(1f),
                 color = Color.White,
-                fontSize = 18.sp,
+                fontSize = if (isTv) 20.sp else 18.sp,
                 lineHeight = 22.sp,
                 fontWeight = FontWeight.ExtraBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (onSeeAllClick != null && shelf.seeAllRequest != null) {
+            if (!isTv && onSeeAllClick != null && shelf.seeAllRequest != null) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable(onClick = onSeeAllClick)
+                    modifier = Modifier.tvClickable(shape = RoundedCornerShape(10.dp), onClick = onSeeAllClick)
                 ) {
                     Text(
                         text = "SEE ALL",
@@ -104,8 +106,14 @@ fun PosterShelf(
         }
 
         LazyRow(
-            contentPadding = PaddingValues(start = ScreenGutter, end = ScreenGutter),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.tvFocusRestorer(),
+            contentPadding = PaddingValues(
+                start = contentGutter(),
+                end = contentGutter(),
+                top = if (isTv) 10.dp else 0.dp,
+                bottom = if (isTv) 14.dp else 0.dp,
+            ),
+            horizontalArrangement = Arrangement.spacedBy(if (isTv) tvListItemSpacing(20.dp) else 16.dp),
         ) {
             when {
                 shelf.isLoading -> {
@@ -125,12 +133,18 @@ fun PosterShelf(
                 }
 
                 else -> {
-                    items(shelf.items, key = { "${it.type}-${it.id}" }, contentType = { "poster" }) { item ->
+                    itemsIndexed(shelf.items, key = { _, item -> "${item.type}-${item.id}" }, contentType = { _, _ -> "poster" }) { index, item ->
                         PosterTile(
                             item = item,
                             mode = mode,
                             onClick = { onItemClick(item) },
+                            modifier = if (index == 0) Modifier.tvContentFocus(initialFocusRequester) else Modifier,
                         )
+                    }
+                    if (isTv && onSeeAllClick != null && shelf.seeAllRequest != null) {
+                        item(contentType = "see-all") {
+                            SeeAllPoster(onClick = onSeeAllClick)
+                        }
                     }
                 }
             }
@@ -139,16 +153,49 @@ fun PosterShelf(
 }
 
 @Composable
+private fun SeeAllPoster(onClick: () -> Unit) {
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        modifier = Modifier
+            .width(150.dp)
+            .aspectRatio(0.66f)
+            .tvFocusIndicator(shape)
+            .clip(shape)
+            .background(Color(0xFF1B1B2C))
+            .clickable(onClick = onClick),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.ChevronRight,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(36.dp),
+        )
+        Text(
+            text = "See all",
+            color = Color.White,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
 fun PosterTile(
     item: CatalogItem,
     mode: ShelfMode,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    val isTv = LocalIsTv.current
+    val shape = RoundedCornerShape(18.dp)
     Box(
-        modifier = Modifier
-            .width(112.dp)
+        modifier = modifier
+            .width(if (isTv) 150.dp else 112.dp)
             .aspectRatio(0.66f)
-            .clip(RoundedCornerShape(18.dp))
+            .tvFocusIndicator(shape)
+            .clip(shape)
             .background(CardFallback)
             .clickable(onClick = onClick),
     ) {
@@ -227,7 +274,7 @@ fun PosterTile(
 private fun PosterSkeleton() {
     Box(
         modifier = Modifier
-            .width(112.dp)
+            .width(if (LocalIsTv.current) 150.dp else 112.dp)
             .aspectRatio(0.66f)
             .clip(RoundedCornerShape(18.dp))
             .background(

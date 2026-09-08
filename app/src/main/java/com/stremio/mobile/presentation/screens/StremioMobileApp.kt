@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package com.stremio.mobile.presentation.screens
 
 import android.content.Context
@@ -8,16 +10,22 @@ import com.stremio.mobile.server.StreamingServerState
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
@@ -48,6 +56,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -82,7 +91,10 @@ import java.io.File
 import kotlin.math.roundToInt
 
 @Composable
-fun StremioMobileApp(viewModel: MainViewModel) {
+fun StremioMobileApp(
+    viewModel: MainViewModel,
+    isTv: Boolean = false,
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val streamsState by viewModel.streamsState.collectAsStateWithLifecycle()
     val isPlayerOpen by viewModel.isPlayerOpen.collectAsStateWithLifecycle()
@@ -110,6 +122,7 @@ fun StremioMobileApp(viewModel: MainViewModel) {
         CompositionLocalProvider(
             LocalGlobalUiTheme provides rootGlobalTheme,
             LocalGlassAlpha provides state.globalGlassAlpha,
+            LocalIsTv provides isTv,
         ) {
             Box(
                 modifier = Modifier
@@ -119,6 +132,12 @@ fun StremioMobileApp(viewModel: MainViewModel) {
             if (state.account.isAuthenticated) {
                 BoardScreen(
                     state = state,
+                    tvContentFocusEnabled = !isPlayerOpen &&
+                        state.selectedDetails == null &&
+                        state.selectedAddonDetails == null &&
+                        !streamsState.isOpen &&
+                        !state.isSearchOpen,
+                    tvBlockBoardFocus = isPlayerOpen,
                     onRefresh = viewModel::refreshCatalogs,
                     onOpenSearch = viewModel::openSearch,
                     onSelectSection = viewModel::selectSection,
@@ -185,6 +204,23 @@ fun StremioMobileApp(viewModel: MainViewModel) {
             }
 
             if (state.account.isAuthenticated && state.isSearchOpen) {
+                if (isTv) {
+                    TvFocusDialog(
+                        onDismiss = viewModel::clearSearch,
+                        contentAlignment = Alignment.TopStart,
+                    ) {
+                        SearchResultsScreen(
+                            query = state.searchQuery,
+                            results = state.searchResults,
+                            shelves = state.searchShelves,
+                            onQueryChange = viewModel::search,
+                            onOpenDetails = viewModel::openDetails,
+                            onOpenDiscoverCatalog = viewModel::openDiscoverCatalog,
+                            onBack = viewModel::clearSearch,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                } else {
                 SearchResultsScreen(
                     query = state.searchQuery,
                     results = state.searchResults,
@@ -196,45 +232,51 @@ fun StremioMobileApp(viewModel: MainViewModel) {
                     modifier = Modifier.fillMaxSize(),
                 )
             }
+            }
 
             state.selectedDetails?.let { details ->
-                BackHandler(onBack = viewModel::closeDetails)
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color(0x99000000))
-                        .clickable(
-                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                            indication = null
-                        ) { viewModel.closeDetails() }
-                ) {
+                val detailSheet = @Composable { modifier: Modifier ->
                     DetailSheet(
                         details = details,
                         inLibrary = state.library.items.any { it.id == details.item.id && it.type == details.item.type },
                         onBack = viewModel::closeDetails,
                         onToggleLibrary = { viewModel.toggleLibrary(details.item) },
-                        onOpenStreams = { viewModel.openStreams(details.item) },
-                        modifier = Modifier
+                        onOpenStreams = {
+                            if (isTv) viewModel.closeDetails()
+                            viewModel.openStreams(details.item)
+                        },
+                        modifier = modifier,
+                    )
+                }
+                if (isTv) {
+                    TvFocusDialog(onDismiss = viewModel::closeDetails) {
+                        detailSheet(Modifier.padding(48.dp))
+                    }
+                } else {
+                    PhoneScrim(onDismiss = viewModel::closeDetails) {
+                        detailSheet(
+                            Modifier
                             .align(Alignment.BottomCenter)
-                            .clickable(
-                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                indication = null
-                            ) {} // Block click propagation
+                                .consumeClicks(),
                     )
                 }
             }
+            }
 
             state.selectedAddonDetails?.let { details ->
-                BackHandler(onBack = viewModel::closeAddonDetails)
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color(0x99000000))
-                        .clickable(
-                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                            indication = null
-                        ) { viewModel.closeAddonDetails() }
-                ) {
+                if (isTv) {
+                    TvFocusDialog(onDismiss = viewModel::closeAddonDetails) {
+                        AddonDetailsSheet(
+                            details = details,
+                            onBack = viewModel::closeAddonDetails,
+                            onInstall = viewModel::installAddon,
+                            onUninstall = viewModel::uninstallAddon,
+                            onUpgrade = viewModel::upgradeAddon,
+                            modifier = Modifier.padding(48.dp),
+                        )
+                    }
+                } else {
+                    PhoneScrim(onDismiss = viewModel::closeAddonDetails) {
                     AddonDetailsSheet(
                         details = details,
                         onBack = viewModel::closeAddonDetails,
@@ -243,39 +285,45 @@ fun StremioMobileApp(viewModel: MainViewModel) {
                         onUpgrade = viewModel::upgradeAddon,
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .clickable(
-                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                indication = null
-                            ) {} // Block click propagation
+                                .consumeClicks(),
                     )
                 }
             }
+            }
 
             if (streamsState.isOpen) {
-                BackHandler {
+                val onStreamsBack: () -> Unit = {
                     if (streamsState.isSeries && streamsState.selectedVideoId != null) {
                         viewModel.backToEpisodes()
                     } else {
                         viewModel.closeStreams()
                     }
                 }
+                val streamsSheet = @Composable { modifier: Modifier ->
                 StreamsSheet(
                     state = streamsState,
                     preferredQuality = state.preferredQuality,
-                    onBack = {
-                        if (streamsState.isSeries && streamsState.selectedVideoId != null) {
-                            viewModel.backToEpisodes()
-                        } else {
-                            viewModel.closeStreams()
-                        }
-                    },
+                        onBack = onStreamsBack,
                     onSelect = viewModel::playStream,
                     onSelectEpisode = viewModel::selectEpisode,
                     onSelectSeason = viewModel::selectSeason,
                     onSelectProvider = viewModel::selectStreamProvider,
                     onSelectSortCriterion = viewModel::selectStreamSortCriterion,
-                    modifier = Modifier.fillMaxSize(),
+                        modifier = modifier,
                 )
+            }
+                if (isTv) {
+                    TvFocusDialog(
+                        onDismiss = onStreamsBack,
+                        contentAlignment = Alignment.TopStart,
+                        trapFocus = false,
+                    ) {
+                        streamsSheet(Modifier.fillMaxSize())
+                    }
+                } else {
+                    BackHandler(onBack = onStreamsBack)
+                    streamsSheet(Modifier.fillMaxSize())
+                }
             }
 
             if (state.showMobileDataWarning) {
@@ -326,6 +374,7 @@ fun StremioMobileApp(viewModel: MainViewModel) {
                     },
                     confirmButton = {
                         androidx.compose.material3.TextButton(
+                            modifier = Modifier.tvFocusIndicator(),
                             onClick = {
                                 if (disableWarning) {
                                     viewModel.setMobileDataWarning(false)
@@ -338,6 +387,7 @@ fun StremioMobileApp(viewModel: MainViewModel) {
                     },
                     dismissButton = {
                         androidx.compose.material3.TextButton(
+                            modifier = Modifier.tvFocusIndicator(),
                             onClick = viewModel::cancelMobileDataPlayback
                         ) {
                             Text(text = "Cancel", color = MutedText)
@@ -371,6 +421,7 @@ fun StremioMobileApp(viewModel: MainViewModel) {
                     },
                     confirmButton = {
                         androidx.compose.material3.TextButton(
+                            modifier = Modifier.tvFocusIndicator(),
                             onClick = viewModel::startServer
                         ) {
                             Text(text = "Retry", color = AccentPurple, fontWeight = FontWeight.Bold)
@@ -378,6 +429,7 @@ fun StremioMobileApp(viewModel: MainViewModel) {
                     },
                     dismissButton = {
                         androidx.compose.material3.TextButton(
+                            modifier = Modifier.tvFocusIndicator(),
                             onClick = {
                                 (context as? Activity)?.finish()
                             }
@@ -422,6 +474,7 @@ fun StremioMobileApp(viewModel: MainViewModel) {
                         },
                         confirmButton = {
                             androidx.compose.material3.TextButton(
+                                modifier = Modifier.tvFocusIndicator(),
                                 onClick = { viewModel.downloadAndInstallUpdate(update.info) }
                             ) {
                                 Text(text = "Install", color = AccentPurple, fontWeight = FontWeight.Bold)
@@ -429,6 +482,7 @@ fun StremioMobileApp(viewModel: MainViewModel) {
                         },
                         dismissButton = {
                             androidx.compose.material3.TextButton(
+                                modifier = Modifier.tvFocusIndicator(),
                                 onClick = viewModel::dismissUpdateDialog
                             ) {
                                 Text(text = "Not Now", color = MutedText)
@@ -510,6 +564,7 @@ fun StremioMobileApp(viewModel: MainViewModel) {
                         },
                         confirmButton = {
                             androidx.compose.material3.TextButton(
+                                modifier = Modifier.tvFocusIndicator(),
                                 onClick = { viewModel.installDownloadedUpdate(update.file) }
                             ) {
                                 Text(text = "Install", color = AccentPurple, fontWeight = FontWeight.Bold)
@@ -517,6 +572,7 @@ fun StremioMobileApp(viewModel: MainViewModel) {
                         },
                         dismissButton = {
                             androidx.compose.material3.TextButton(
+                                modifier = Modifier.tvFocusIndicator(),
                                 onClick = viewModel::dismissUpdateDialog
                             ) {
                                 Text(text = "Later", color = MutedText)
@@ -647,6 +703,8 @@ fun StremioMobileApp(viewModel: MainViewModel) {
 @Composable
 private fun BoardScreen(
     state: com.stremio.mobile.presentation.state.MainUiState,
+    tvContentFocusEnabled: Boolean,
+    tvBlockBoardFocus: Boolean = false,
     onRefresh: () -> Unit,
     onOpenSearch: () -> Unit,
     onSelectSection: (MainSection) -> Unit,
@@ -756,6 +814,14 @@ private fun BoardScreen(
     }
 
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val isTv = LocalIsTv.current
+    val contentFocus = remember { FocusRequester() }
+    val navigationFocus = remember { FocusRequester() }
+    TvRequestFocus(
+        requester = contentFocus,
+        key = state.selectedSection to settingsSubScreen,
+        enabled = tvContentFocusEnabled,
+    )
     val isAddonsSettingsPage = state.selectedSection == MainSection.Settings &&
             settingsSubScreen == SettingsSubScreen.Addons
     CompositionLocalProvider(
@@ -763,7 +829,17 @@ private fun BoardScreen(
         LocalGlassAlpha provides state.globalGlassAlpha,
         LocalGlobalBackdrop provides appBackdrop
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (isTv && tvBlockBoardFocus) {
+                        Modifier.focusProperties { enter = { FocusRequester.Cancel } }
+                    } else {
+                        Modifier
+                    }
+                ),
+        ) {
             if (appBackdrop != null) {
                 Box(
                     modifier = Modifier
@@ -776,15 +852,40 @@ private fun BoardScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
+                    .then(
+                        if (isTv) {
+                            Modifier
+                                .focusRequester(contentFocus)
+                                .tvFocusRestorer()
+                                .focusProperties {
+                                    left = navigationFocus
+                                    if (tvBlockBoardFocus) {
+                                        canFocus = false
+                                        enter = { FocusRequester.Cancel }
+                                    }
+                                }
+                        } else {
+                            Modifier
+                        }
+                    )
                     .then(if (contentBackdrop != null) Modifier.layerBackdrop(contentBackdrop) else Modifier)
                     .windowInsetsPadding(WindowInsets.statusBars),
-            contentPadding = PaddingValues(bottom = BottomBarSpace + navBottom),
-            verticalArrangement = Arrangement.spacedBy(if (isAddonsSettingsPage) 10.dp else 27.dp),
+            contentPadding = PaddingValues(
+                start = if (isTv) TvNavRailWidth else 0.dp,
+                end = if (isTv) TvContentGutter else 0.dp,
+                top = if (isTv) 16.dp else 0.dp,
+                bottom = if (isTv) 32.dp else BottomBarSpace + navBottom,
+            ),
+            verticalArrangement = Arrangement.spacedBy(
+                if (isAddonsSettingsPage) tvListItemSpacing(10.dp) else if (isTv) 36.dp else 27.dp,
+            ),
         ) {
             item {
+                if (!isTv) {
                 BoardHeader(
                     onOpenSearch = onOpenSearch,
                 )
+            }
             }
             when (state.selectedSection) {
                 MainSection.Home -> {
@@ -802,7 +903,7 @@ private fun BoardScreen(
                             PosterShelf(
                                 shelf = state.continueWatching,
                                 mode = ShelfMode.Continue,
-                                onItemClick = onOpenDetails
+                                onItemClick = onOpenDetails,
                             )
                         }
                     }
@@ -820,7 +921,7 @@ private fun BoardScreen(
                                     shelf.seeAllRequest?.let { req ->
                                         onOpenDiscoverCatalog(req, shelf.title)
                                     }
-                                }
+                                },
                             )
                         }
                     }
@@ -832,7 +933,7 @@ private fun BoardScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier
-                                .padding(horizontal = 16.dp)
+                                .padding(horizontal = contentGutter())
                                 .fillMaxWidth()
                         ) {
                             if (state.isDiscoverSeeAll) {
@@ -867,25 +968,26 @@ private fun BoardScreen(
                         item { EmptyState(state.discoverCatalog.error) }
                     } else {
                         val items = state.discoverCatalog.items
-                        val chunks = items.chunked(3)
-                        chunks.forEach { rowItems ->
+                        val columns = if (isTv) 4 else 3
+                        val chunks = items.chunked(columns)
+                        chunks.forEachIndexed { rowIndex, rowItems ->
                             item {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                        .padding(horizontal = contentGutter()),
+                                    horizontalArrangement = Arrangement.spacedBy(if (isTv) 24.dp else 16.dp)
                                 ) {
-                                    rowItems.forEach { item ->
+                                    rowItems.forEachIndexed { colIndex, item ->
                                         Box(modifier = Modifier.weight(1f)) {
                                             PosterTile(
                                                 item = item,
                                                 mode = if (item.type == "series") ShelfMode.Series else ShelfMode.Movie,
-                                                onClick = { onOpenDetails(item) }
+                                                onClick = { onOpenDetails(item) },
                                             )
                                         }
                                     }
-                                    repeat(3 - rowItems.size) {
+                                    repeat(columns - rowItems.size) {
                                         Box(modifier = Modifier.weight(1f))
                                     }
                                 }
@@ -907,25 +1009,26 @@ private fun BoardScreen(
                     if (items.isEmpty()) {
                         item { EmptyState("Add movies and series from details to build your library.") }
                     } else {
-                        val chunks = items.chunked(3)
-                        chunks.forEach { rowItems ->
+                        val columns = if (isTv) 4 else 3
+                        val chunks = items.chunked(columns)
+                        chunks.forEachIndexed { rowIndex, rowItems ->
                             item {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                        .padding(horizontal = contentGutter()),
+                                    horizontalArrangement = Arrangement.spacedBy(if (isTv) 24.dp else 16.dp)
                                 ) {
-                                    rowItems.forEach { item ->
+                                    rowItems.forEachIndexed { colIndex, item ->
                                         Box(modifier = Modifier.weight(1f)) {
                                             PosterTile(
                                                 item = item,
                                                 mode = if (item.type == "series") ShelfMode.Series else ShelfMode.Movie,
-                                                onClick = { onOpenDetails(item) }
+                                                onClick = { onOpenDetails(item) },
                                             )
                                         }
                                     }
-                                    repeat(3 - rowItems.size) {
+                                    repeat(columns - rowItems.size) {
                                         Box(modifier = Modifier.weight(1f))
                                     }
                                 }
@@ -953,7 +1056,7 @@ private fun BoardScreen(
                                     onBack = { settingsSubScreen = SettingsSubScreen.Main },
                                     onSelectFilter = onSelectAddonsFilter,
                                     onInstallByUrl = onInstallAddonByUrl,
-                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                    modifier = Modifier.padding(horizontal = settingsContentPadding()),
                                 )
                             }
                             when {
@@ -975,7 +1078,7 @@ private fun BoardScreen(
                                             onClick = { onOpenAddonDetails(addon.transportUrl) },
                                             onInstall = { onInstallAddon(addon) },
                                             onUninstall = { onUninstallAddon(addon) },
-                                            modifier = Modifier.padding(horizontal = 16.dp),
+                                            modifier = Modifier.padding(horizontal = settingsContentPadding()),
                                         )
                                     }
                                 }
@@ -1104,12 +1207,25 @@ private fun BoardScreen(
             }
         }
 
-        StremioBottomBar(
-            selectedView = state.selectedSection.toAppView(),
-            backdrop = contentBackdrop ?: appBackdrop,
-            onSelect = { onSelectSection(it.toSection()) },
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
+        if (isTv) {
+            TvNavigationRail(
+                selectedView = state.selectedSection.toAppView(),
+                onSelect = { onSelectSection(it.toSection()) },
+                onOpenSearch = onOpenSearch,
+                contentFocusRequester = contentFocus,
+                focusRequester = navigationFocus,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .fillMaxHeight(),
+            )
+        } else {
+            StremioBottomBar(
+                selectedView = state.selectedSection.toAppView(),
+                backdrop = contentBackdrop ?: appBackdrop,
+                onSelect = { onSelectSection(it.toSection()) },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
     }
 }
 }
@@ -1127,7 +1243,7 @@ private fun FilterChip(
         modifier = modifier
             .clip(RoundedCornerShape(99.dp))
             .background(backgroundColor)
-            .clickable(onClick = onClick)
+            .tvClickable(shape = RoundedCornerShape(99.dp), onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -1170,7 +1286,7 @@ fun DropdownFilter(
             modifier = Modifier
                 .clip(RoundedCornerShape(99.dp))
                 .background(backgroundColor)
-                .clickable { expanded = true }
+                .tvClickable(shape = RoundedCornerShape(99.dp), onClick = { expanded = true })
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -1260,8 +1376,8 @@ private fun LibraryFiltersRow(
 
     val selectable = libraryWithFilters.selectable
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(horizontal = contentGutter()),
+        horizontalArrangement = Arrangement.spacedBy(tvListItemSpacing(8.dp)),
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
@@ -1320,8 +1436,8 @@ private fun DiscoverFiltersRow(
 
     val selectable = discoverCatalogWithFilters.selectable
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(horizontal = contentGutter()),
+        horizontalArrangement = Arrangement.spacedBy(tvListItemSpacing(8.dp)),
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
@@ -1376,4 +1492,30 @@ private fun DiscoverFiltersRow(
             }
         }
     }
+}
+
+@Composable
+private fun PhoneScrim(
+    onDismiss: () -> Unit,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    BackHandler(onBack = onDismiss)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0x99000000))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) { onDismiss() },
+        content = content,
+    )
+}
+
+private fun Modifier.consumeClicks(): Modifier = composed {
+    clickable(
+        interactionSource = remember { MutableInteractionSource() },
+        indication = null,
+        onClick = {},
+    )
 }

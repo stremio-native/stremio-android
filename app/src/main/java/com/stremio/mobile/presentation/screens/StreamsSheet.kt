@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,9 +20,13 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -35,14 +40,22 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -59,6 +72,15 @@ import com.stremio.mobile.data.model.qualityScore
 import com.stremio.mobile.presentation.components.ThemedCard
 import com.stremio.mobile.presentation.components.ThemedChip
 import com.stremio.mobile.presentation.components.ThemedIconButton
+import com.stremio.mobile.presentation.components.TvBackButton
+import com.stremio.mobile.presentation.components.LocalIsTv
+import com.stremio.mobile.presentation.components.TvOverscan
+import com.stremio.mobile.presentation.components.TvRequestFocus
+import com.stremio.mobile.presentation.components.tvClickable
+import com.stremio.mobile.presentation.components.tvContentFocus
+import com.stremio.mobile.presentation.components.tvEscapeListUp
+import com.stremio.mobile.presentation.components.tvFocusVertical
+import com.stremio.mobile.presentation.components.tvListItemSpacing
 import com.stremio.mobile.presentation.state.StreamsUiState
 
 @Composable
@@ -73,12 +95,35 @@ fun StreamsSheet(
     onSelectSortCriterion: (StreamSortCriterion) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val listFocus = remember { FocusRequester() }
+    val backFocus = remember { FocusRequester() }
+    val chromeFocus = remember { FocusRequester() }
+    TvRequestFocus(listFocus, key = Triple(state.showingEpisodes, state.selectedSeason, state.streams.firstOrNull()?.key))
+    val isTv = LocalIsTv.current
+    val hasSeasonChrome = state.showingEpisodes && state.seasons.size > 1
+    val hasStreamChrome = !state.showingEpisodes && (
+        state.streams.map { it.addonTitle }.distinct().size > 1 ||
+            state.sortCriterion != StreamSortCriterion.DEFAULT
+        )
+    val hasChrome = hasSeasonChrome || hasStreamChrome
+    val upFromList = if (hasChrome) chromeFocus else backFocus
+    val downFromBack = if (hasChrome) chromeFocus else listFocus
+    var firstRowFocused by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(StremioBackgroundBrush)
             .windowInsetsPadding(WindowInsets.statusBars)
-            .padding(horizontal = 18.dp, vertical = 16.dp),
+            .padding(
+                horizontal = if (isTv) TvOverscan else 18.dp,
+                vertical = if (isTv) 20.dp else 16.dp,
+            )
+            .tvEscapeListUp(
+                enabled = firstRowFocused,
+                target = upFromList,
+                fallback = backFocus,
+            ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         // Header
@@ -86,14 +131,25 @@ fun StreamsSheet(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            ThemedIconButton(
-                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                contentDescription = "Back",
-                onClick = onBack,
-                modifier = Modifier
-                    .size(40.dp),
-                containerColor = GlassSurface,
-            )
+            if (isTv) {
+                TvBackButton(
+                    onClick = onBack,
+                    modifier = Modifier
+                        .focusRequester(backFocus)
+                        .focusProperties {
+                            down = downFromBack
+                            up = FocusRequester.Cancel
+                        },
+                )
+            } else {
+                ThemedIconButton(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "Back",
+                    onClick = onBack,
+                    modifier = Modifier.size(40.dp),
+                    containerColor = GlassSurface,
+                )
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = if (state.showingEpisodes) "Episodes" else "Streams",
@@ -111,8 +167,8 @@ fun StreamsSheet(
                         },
                         color = MutedText,
                         fontSize = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        maxLines = if (isTv) Int.MAX_VALUE else 1,
+                        overflow = if (isTv) TextOverflow.Clip else TextOverflow.Ellipsis,
                     )
                 }
                 state.releaseDateLabel?.takeIf { it.isNotBlank() }?.let { releaseDate ->
@@ -167,33 +223,20 @@ fun StreamsSheet(
                 }
             }
             state.showingEpisodes -> {
-                // Season selector row
-                if (state.seasons.size > 1) {
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(end = 8.dp),
-                    ) {
-                        items(state.seasons) { season ->
-                            val selected = season == state.selectedSeason
-                            ThemedChip(
-                                selected = selected,
-                                onClick = { onSelectSeason(season) },
-                            ) {
-                                Text(
-                                    text = "Season $season",
-                                    color = if (selected) Color.White else MutedText,
-                                    fontSize = 13.sp,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                                )
-                            }
-                        }
-                    }
-                }
-                // Episode list filtered by selected season
                 val filteredEpisodes = state.episodes.filter {
                     state.selectedSeason == null || it.season == state.selectedSeason
                 }
-                val listState = rememberLazyListState()
+                if (state.seasons.size > 1) {
+                    SeasonChipRow(
+                        seasons = state.seasons,
+                        selectedSeason = state.selectedSeason,
+                        chromeFocus = chromeFocus,
+                        backFocus = backFocus,
+                        listFocus = listFocus,
+                        onSelectSeason = onSelectSeason,
+                    )
+                }
+                val phoneListState = rememberLazyListState()
                 val targetIndex = remember(filteredEpisodes) {
                     val currentIndex = filteredEpisodes.indexOfFirst { it.isCurrent }
                     if (currentIndex != -1) {
@@ -202,27 +245,42 @@ fun StreamsSheet(
                         filteredEpisodes.indexOfLast { it.watched }
                     }
                 }
-                LaunchedEffect(targetIndex) {
-                    if (targetIndex != -1) {
-                        listState.scrollToItem(targetIndex)
-                    } else {
-                        listState.scrollToItem(0)
+                if (!isTv) {
+                    LaunchedEffect(targetIndex) {
+                        if (targetIndex != -1) {
+                            phoneListState.scrollToItem(targetIndex)
+                        } else {
+                            phoneListState.scrollToItem(0)
+                        }
                     }
                 }
-                LazyColumn(
-                    state = listState,
-                    contentPadding = PaddingValues(bottom = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                val focusIndex = if (isTv) {
+                    0
+                } else {
+                    filteredEpisodes.indexOfFirst { it.isCurrent }.let { if (it >= 0) it else 0 }
+                }
+                TvAwareItemList(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f)
-                ) {
-                    items(filteredEpisodes, key = { it.videoId }) { episode ->
-                        EpisodeRow(
-                            episode = episode,
-                            onClick = { onSelectEpisode(episode) }
-                        )
-                    }
+                        .weight(1f),
+                    itemCount = filteredEpisodes.size,
+                    itemSpacing = tvListItemSpacing(8.dp),
+                    lazyState = phoneListState,
+                    keyForIndex = { filteredEpisodes[it].videoId },
+                ) { index ->
+                    val episode = filteredEpisodes[index]
+                    EpisodeRow(
+                        episode = episode,
+                        onClick = { onSelectEpisode(episode) },
+                        modifier = Modifier.listEdgeFocus(
+                            index = index,
+                            focusIndex = focusIndex,
+                            listFocus = listFocus,
+                            upFromList = upFromList,
+                            backFocus = backFocus,
+                            onFirstRowFocusChange = { firstRowFocused = it },
+                        ),
+                    )
                 }
             }
             else -> {
@@ -260,44 +318,234 @@ fun StreamsSheet(
                     }
 
                     if (providers.size > 1 || state.sortCriterion != StreamSortCriterion.DEFAULT) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (providers.size > 1) {
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    item {
-                                        FilterChip(label = "All", selected = state.selectedProvider == null, onClick = { onSelectProvider(null) })
-                                    }
-                                    items(providers) { provider ->
-                                        FilterChip(label = provider, selected = state.selectedProvider == provider, onClick = { onSelectProvider(provider) })
-                                    }
-                                }
-                            }
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(StreamSortCriterion.entries.toList()) { criterion ->
-                                    FilterChip(
-                                        label = "Sort: ${criterion.label}",
-                                        selected = state.sortCriterion == criterion,
-                                        onClick = { onSelectSortCriterion(criterion) },
-                                    )
-                                }
-                            }
-                        }
+                        StreamChromeRow(
+                            providers = providers,
+                            selectedProvider = state.selectedProvider,
+                            sortCriterion = state.sortCriterion,
+                            chromeFocus = chromeFocus,
+                            backFocus = backFocus,
+                            listFocus = listFocus,
+                            onSelectProvider = onSelectProvider,
+                            onSelectSortCriterion = onSelectSortCriterion,
+                        )
                     }
 
-                    LazyColumn(
-                        contentPadding = PaddingValues(bottom = 24.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    TvAwareItemList(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f)
-                    ) {
-                        items(visibleStreams, key = { it.key }) { option ->
-                            StreamRow(
-                                option = option,
-                                enabled = !state.isResolving,
-                                onSelect = { onSelect(option) }
-                            )
-                        }
+                            .weight(1f),
+                        itemCount = visibleStreams.size,
+                        itemSpacing = tvListItemSpacing(12.dp),
+                        keyForIndex = { visibleStreams[it].key },
+                    ) { index ->
+                        val option = visibleStreams[index]
+                        StreamRow(
+                            option = option,
+                            enabled = !state.isResolving,
+                            onSelect = { onSelect(option) },
+                            modifier = Modifier.listEdgeFocus(
+                                index = index,
+                                focusIndex = 0,
+                                listFocus = listFocus,
+                                upFromList = upFromList,
+                                backFocus = backFocus,
+                                onFirstRowFocusChange = { firstRowFocused = it },
+                            ),
+                        )
                     }
+                }
+            }
+        }
+    }
+}
+
+private fun Modifier.listEdgeFocus(
+    index: Int,
+    focusIndex: Int,
+    listFocus: FocusRequester,
+    upFromList: FocusRequester,
+    backFocus: FocusRequester,
+    onFirstRowFocusChange: (Boolean) -> Unit,
+): Modifier = this
+    .then(
+        if (index == 0) {
+            Modifier.onFocusChanged { focus ->
+                onFirstRowFocusChange(focus.isFocused || focus.hasFocus)
+            }
+        } else {
+            Modifier
+        },
+    )
+    .then(if (index == focusIndex) Modifier.tvContentFocus(listFocus) else Modifier)
+    .then(if (index == 0) Modifier.tvFocusVertical(up = upFromList) else Modifier)
+    .tvEscapeListUp(
+        enabled = index == 0,
+        target = upFromList,
+        fallback = backFocus,
+    )
+
+@Composable
+private fun TvAwareItemList(
+    itemCount: Int,
+    itemSpacing: Dp,
+    modifier: Modifier = Modifier,
+    lazyState: LazyListState = rememberLazyListState(),
+    keyForIndex: (Int) -> Any,
+    item: @Composable (index: Int) -> Unit,
+) {
+    val isTv = LocalIsTv.current
+    if (isTv) {
+        Column(
+            modifier = modifier.verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(itemSpacing),
+        ) {
+            repeat(itemCount) { index -> item(index) }
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    } else {
+        LazyColumn(
+            state = lazyState,
+            contentPadding = PaddingValues(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(itemSpacing),
+            modifier = modifier,
+        ) {
+            items(
+                count = itemCount,
+                key = keyForIndex,
+            ) { index ->
+                item(index)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SeasonChipRow(
+    seasons: List<Int>,
+    selectedSeason: Int?,
+    chromeFocus: FocusRequester,
+    backFocus: FocusRequester,
+    listFocus: FocusRequester,
+    onSelectSeason: (Int) -> Unit,
+) {
+    val isTv = LocalIsTv.current
+    val chip: @Composable (Int) -> Unit = { season ->
+        val selected = season == selectedSeason
+        ThemedChip(
+            modifier = Modifier
+                .then(if (season == seasons.first()) Modifier.focusRequester(chromeFocus) else Modifier)
+                .tvFocusVertical(up = backFocus, down = listFocus),
+            selected = selected,
+            onClick = { onSelectSeason(season) },
+        ) {
+            Text(
+                text = "Season $season",
+                color = if (selected) Color.White else MutedText,
+                fontSize = 13.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            )
+        }
+    }
+    if (isTv) {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            seasons.forEach { chip(it) }
+        }
+    } else {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(end = 8.dp),
+        ) {
+            items(seasons) { season -> chip(season) }
+        }
+    }
+}
+
+@Composable
+private fun StreamChromeRow(
+    providers: List<String>,
+    selectedProvider: String?,
+    sortCriterion: StreamSortCriterion,
+    chromeFocus: FocusRequester,
+    backFocus: FocusRequester,
+    listFocus: FocusRequester,
+    onSelectProvider: (String?) -> Unit,
+    onSelectSortCriterion: (StreamSortCriterion) -> Unit,
+) {
+    val isTv = LocalIsTv.current
+    val providerChip: @Composable (String?, Boolean) -> Unit = { provider, attachChrome ->
+        FilterChip(
+            label = provider ?: "All",
+            selected = if (provider == null) selectedProvider == null else selectedProvider == provider,
+            onClick = { onSelectProvider(provider) },
+            modifier = Modifier
+                .then(if (attachChrome) Modifier.focusRequester(chromeFocus) else Modifier)
+                .tvFocusVertical(up = backFocus, down = listFocus),
+        )
+    }
+    val sortChips: @Composable () -> Unit = {
+        StreamSortCriterion.entries.forEachIndexed { index, criterion ->
+            FilterChip(
+                label = "Sort: ${criterion.label}",
+                selected = sortCriterion == criterion,
+                onClick = { onSelectSortCriterion(criterion) },
+                modifier = Modifier
+                    .then(
+                        if (providers.size <= 1 && index == 0) {
+                            Modifier.focusRequester(chromeFocus)
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .tvFocusVertical(up = backFocus, down = listFocus),
+            )
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (isTv) {
+            if (providers.size > 1) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    providerChip(null, true)
+                    providers.forEach { providerChip(it, false) }
+                }
+            }
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                sortChips()
+            }
+        } else {
+            if (providers.size > 1) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item { providerChip(null, true) }
+                    items(providers) { provider -> providerChip(provider, false) }
+                }
+            }
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                itemsIndexed(StreamSortCriterion.entries.toList()) { index, criterion ->
+                    FilterChip(
+                        label = "Sort: ${criterion.label}",
+                        selected = sortCriterion == criterion,
+                        onClick = { onSelectSortCriterion(criterion) },
+                        modifier = Modifier
+                            .then(
+                                if (providers.size <= 1 && index == 0) {
+                                    Modifier.focusRequester(chromeFocus)
+                                } else {
+                                    Modifier
+                                },
+                            )
+                            .tvFocusVertical(up = backFocus, down = listFocus),
+                    )
                 }
             }
         }
@@ -308,16 +556,18 @@ fun StreamsSheet(
 private fun EpisodeRow(
     episode: EpisodeOption,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     ThemedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .tvClickable(shape = RoundedCornerShape(14.dp), onClick = onClick),
         cornerRadius = 14.dp,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(if (episode.isCurrent) Color(0x332A2042) else Color.Transparent)
-                .clickable(onClick = onClick)
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -369,10 +619,10 @@ private fun EpisodeRow(
             Text(
                 text = "E${episode.episode}. ${episode.title}",
                 color = Color.White,
-                fontSize = 14.sp,
+                fontSize = if (LocalIsTv.current) 16.sp else 14.sp,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                maxLines = if (LocalIsTv.current) Int.MAX_VALUE else 1,
+                overflow = if (LocalIsTv.current) TextOverflow.Clip else TextOverflow.Ellipsis,
             )
             episode.releaseDate?.takeIf { it.isNotBlank() }?.let { releaseDate ->
                 Text(
@@ -401,168 +651,162 @@ private fun StreamRow(
     option: StreamOption,
     enabled: Boolean,
     onSelect: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    val isTv = LocalIsTv.current
     ThemedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .tvClickable(enabled = enabled, shape = RoundedCornerShape(16.dp), onClick = onSelect),
         cornerRadius = 16.dp,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(enabled = enabled, onClick = onSelect)
-                .padding(14.dp),
+                .padding(if (isTv) 18.dp else 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(AccentPurple),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.PlayArrow,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(22.dp),
-            )
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Box(
+                modifier = Modifier
+                    .size(if (isTv) 48.dp else 40.dp)
+                    .clip(CircleShape)
+                    .background(AccentPurple),
+                contentAlignment = Alignment.Center,
             ) {
-                // Quality Badge (if available, e.g. 4K, 1080p)
-                option.quality?.let { qual ->
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFF3B3B4F))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
+                Icon(
+                    imageVector = Icons.Outlined.PlayArrow,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(if (isTv) 26.dp else 22.dp),
+                )
+            }
+            Spacer(modifier = Modifier.width(if (isTv) 16.dp else 12.dp))
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(if (isTv) 8.dp else 4.dp),
+            ) {
+                Text(
+                    text = option.name,
+                    color = Color.White,
+                    fontSize = if (isTv) 17.sp else 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = if (isTv) Int.MAX_VALUE else 1,
+                    overflow = if (isTv) TextOverflow.Clip else TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    option.quality?.let { qual ->
+                        StreamMetaBadge(
                             text = qual.uppercase(),
+                            background = Color(0xFF3B3B4F),
                             color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    if (option.addonTitle.isNotBlank()) {
+                        StreamMetaBadge(
+                            text = option.addonTitle,
+                            background = AccentPurple.copy(alpha = 0.12f),
+                            color = AccentPurple,
+                            border = true,
+                        )
+                    }
+                    option.size?.let { sz ->
+                        StreamMetaChip(
+                            icon = Icons.Outlined.Storage,
+                            text = sz,
+                            tint = MutedText,
+                        )
+                    }
+                    option.seeds?.let { s ->
+                        StreamMetaChip(
+                            icon = Icons.Outlined.Person,
+                            text = s,
+                            tint = Color(0xFF81C784),
+                            iconTint = Color(0xFF4CAF50),
+                        )
+                    }
+                    option.origin?.let { o ->
+                        StreamMetaChip(
+                            icon = Icons.Outlined.Cloud,
+                            text = o,
+                            tint = MutedText,
                         )
                     }
                 }
 
-                // Addon Provider Badge
-                if (option.addonTitle.isNotBlank()) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(AccentPurple.copy(alpha = 0.12f))
-                            .border(1.dp, AccentPurple.copy(alpha = 0.24f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = option.addonTitle,
-                            color = AccentPurple,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                val cleanDesc = option.cleanDescription ?: option.description ?: option.addonTitle
+                if (cleanDesc.isNotBlank()) {
+                    Text(
+                        text = cleanDesc,
+                        color = MutedText,
+                        fontSize = if (isTv) 14.sp else 12.sp,
+                        maxLines = if (isTv) Int.MAX_VALUE else 3,
+                        overflow = if (isTv) TextOverflow.Clip else TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
-                
-                Text(
-                    text = option.name,
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-            }
-            
-            // Metadata Badges Row (Seeds, Size, Origin)
-            if (option.seeds != null || option.size != null || option.origin != null) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    option.seeds?.let { s ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Person,
-                                contentDescription = "Seeds",
-                                tint = Color(0xFF4CAF50), // Green for healthy seeds
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Text(
-                                text = s,
-                                color = Color(0xFF81C784),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                    option.size?.let { sz ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Storage,
-                                contentDescription = "Size",
-                                tint = MutedText,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Text(
-                                text = sz,
-                                color = MutedText,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                    option.origin?.let { o ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Cloud,
-                                contentDescription = "Origin",
-                                tint = MutedText,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Text(
-                                text = o,
-                                color = MutedText,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                }
-            }
-            
-            // Clean Description Underneath
-            val cleanDesc = option.cleanDescription ?: option.description ?: option.addonTitle
-            if (cleanDesc.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = cleanDesc,
-                    color = MutedText,
-                    fontSize = 12.sp,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
         }
     }
 }
+
+@Composable
+private fun StreamMetaBadge(
+    text: String,
+    background: Color,
+    color: Color,
+    border: Boolean = false,
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(background)
+            .then(
+                if (border) Modifier.border(1.dp, AccentPurple.copy(alpha = 0.24f), RoundedCornerShape(4.dp))
+                else Modifier
+            )
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = text,
+            color = color,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+        )
+    }
+}
+
+@Composable
+private fun StreamMetaChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String,
+    tint: Color,
+    iconTint: Color = tint,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = iconTint,
+            modifier = Modifier.size(14.dp),
+        )
+        Text(
+            text = text,
+            color = tint,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+        )
+    }
 }
 
 @Composable
@@ -570,8 +814,10 @@ private fun FilterChip(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     ThemedChip(
+        modifier = modifier,
         selected = selected,
         onClick = onClick,
     ) {

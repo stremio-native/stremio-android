@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.sp
 import com.stremio.mobile.core.theme.ScreenGutter
 
@@ -46,15 +47,15 @@ fun BoardHeader(
         Spacer(modifier = Modifier.weight(1f))
         Box(
             modifier = Modifier
-                .size(44.dp)
-                .clickable(onClick = onOpenSearch),
+                .size(if (LocalIsTv.current) 56.dp else 44.dp)
+                .tvClickable(shape = RoundedCornerShape(14.dp), onClick = onOpenSearch),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = Icons.Default.Search,
                 contentDescription = "Search",
                 tint = Color.White,
-                modifier = Modifier.size(28.dp),
+                modifier = Modifier.size(if (LocalIsTv.current) 34.dp else 28.dp),
             )
         }
     }

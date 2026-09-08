@@ -209,7 +209,7 @@ fun ThemedButton(
                     .defaultMinSize(minHeight = 52.dp)
                     .clip(RoundedCornerShape(999.dp))
                     .background(containerColor.copy(alpha = if (enabled) 0.34f else 0.10f))
-                    .clickable(enabled = enabled, onClick = combinedOnClick)
+                    .tvClickable(enabled = enabled, shape = RoundedCornerShape(999.dp), onClick = combinedOnClick)
                     .padding(horizontal = 18.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
@@ -223,7 +223,7 @@ fun ThemedButton(
                 .clip(RoundedCornerShape(999.dp))
                 .background(containerColor.copy(alpha = if (enabled) 0.34f else 0.10f))
                 .border(0.8.dp, Color.White.copy(alpha = if (enabled) 0.22f else 0.08f), RoundedCornerShape(999.dp))
-                .clickable(enabled = enabled, onClick = combinedOnClick)
+                .tvClickable(enabled = enabled, shape = RoundedCornerShape(999.dp), onClick = combinedOnClick)
                 .padding(horizontal = 18.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
@@ -232,7 +232,7 @@ fun ThemedButton(
     } else {
         Button(
             onClick = combinedOnClick,
-            modifier = modifier,
+            modifier = modifier.tvFocusIndicator(),
             enabled = enabled,
             colors = ButtonDefaults.buttonColors(
                 containerColor = containerColor,
@@ -293,7 +293,7 @@ fun ThemedTextButton(
 
     if (theme.style == "modern") {
         StaticGlassChip(
-            modifier = modifier,
+            modifier = modifier.tvFocusIndicator(),
             enabled = enabled,
             onClick = combinedOnClick,
         ) {
@@ -302,7 +302,7 @@ fun ThemedTextButton(
     } else {
         TextButton(
             onClick = combinedOnClick,
-            modifier = modifier,
+            modifier = modifier.tvFocusIndicator(),
             enabled = enabled,
         ) {
             Text(text = text)
@@ -347,7 +347,7 @@ fun ThemedIconButton(
                 modifier = Modifier
                     .matchParentSize()
                     .clip(CircleShape)
-                    .clickable(enabled = enabled, onClick = combinedOnClick),
+                    .tvClickable(enabled = enabled, shape = CircleShape, onClick = combinedOnClick),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -377,7 +377,7 @@ fun ThemedIconButton(
                     .clip(CircleShape)
                     .background(containerColor)
             } else {
-                modifier
+                modifier.tvFocusIndicator()
             },
         ) {
             Icon(
@@ -424,7 +424,13 @@ fun ThemedChip(
             modifier = modifier
                 .clip(shape)
                 .background(if (selected) AccentPurple else GlassSurface)
-                .then(if (combinedOnClick != null) Modifier.clickable(enabled = enabled, onClick = combinedOnClick) else Modifier)
+                .then(
+                    if (combinedOnClick != null) {
+                        Modifier.tvClickable(enabled = enabled, shape = RoundedCornerShape(999.dp), onClick = combinedOnClick)
+                    } else {
+                        Modifier
+                    }
+                )
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             content = content,
@@ -481,7 +487,7 @@ fun ThemedToggle(
         Switch(
             checked = checked,
             onCheckedChange = combinedOnCheckedChange,
-            modifier = modifier,
+            modifier = modifier.tvFocusIndicator(RoundedCornerShape(999.dp)),
             colors = SwitchDefaults.colors(
                 checkedThumbColor = androidx.compose.ui.graphics.Color.White,
                 checkedTrackColor = AccentPurple,
@@ -519,6 +525,7 @@ fun ThemedSlider(
     val resolvedBackdrop = backdrop ?: LocalGlobalBackdrop.current
     val triggerHaptic = rememberGlobalHapticFeedback()
     
+    val sliderModifier = modifier.tvSliderFocusNavigation()
     if (theme.style == "modern") {
         LiquidSlider(
             value = value,
@@ -529,7 +536,7 @@ fun ThemedSlider(
             onValueChangeFinished = onValueChangeFinished,
             valueRange = valueRange,
             backdrop = resolvedBackdrop,
-            modifier = modifier
+            modifier = sliderModifier
         )
     } else {
         Slider(
@@ -540,7 +547,7 @@ fun ThemedSlider(
             },
             onValueChangeFinished = onValueChangeFinished,
             valueRange = valueRange,
-            modifier = modifier,
+            modifier = sliderModifier.tvFocusIndicator(RoundedCornerShape(999.dp)),
             colors = SliderDefaults.colors(
                 thumbColor = AccentPurple,
                 activeTrackColor = AccentPurple

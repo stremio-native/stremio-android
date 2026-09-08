@@ -1,7 +1,5 @@
 package com.stremio.mobile.presentation.screens
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,10 +24,7 @@ fun AndroidSettingsScreen(
     onShowAnalyticsDisclosure: () -> Unit,
     onBack: () -> Unit
 ) {
-    Column(
-        modifier = Modifier.padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
+    SettingsColumn {
         SettingsHeader(title = "Android Settings", onBack = onBack)
 
         Text(

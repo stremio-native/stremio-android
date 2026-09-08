@@ -48,17 +48,17 @@ fun AddonRow(
     ThemedCard(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 112.dp, max = 150.dp),
+            .heightIn(min = 112.dp, max = 150.dp)
+            .tvClickable(shape = RoundedCornerShape(16.dp), focusedScale = 1.025f) {
+                triggerHaptic()
+                onClick()
+            },
         cornerRadius = 16.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 112.dp)
-                .clickable {
-                    triggerHaptic()
-                    onClick()
-                }
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),

@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -17,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +37,7 @@ import com.stremio.mobile.core.theme.MutedText
 import com.stremio.mobile.presentation.components.ThemedCard
 import com.stremio.mobile.presentation.components.ThemedButton
 import com.stremio.mobile.presentation.components.rememberGlobalHapticFeedback
+import com.stremio.mobile.presentation.components.tvListItemSpacing
 
 @Composable
 fun GeneralSettingsScreen(
@@ -50,10 +49,7 @@ fun GeneralSettingsScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    Column(
-        modifier = Modifier.padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
+    SettingsColumn {
         SettingsHeader(title = "General Settings", onBack = onBack)
 
         Text(
@@ -137,7 +133,7 @@ fun GeneralSettingsScreen(
         var showAppPrivacyDialog by remember { mutableStateOf(false) }
 
         Column(
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(tvListItemSpacing(10.dp))
         ) {
             SettingsLinkRow(title = "Help / Support Center", url = "https://stremio.zendesk.com/hc/en-us")
             SettingsLinkRow(title = "Terms of Service", url = "https://www.stremio.com/tos")
@@ -159,17 +155,18 @@ private fun SettingsLinkRow(
     val context = LocalContext.current
     val triggerHaptic = rememberGlobalHapticFeedback()
     ThemedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.settingsRowClickable(
+            onClick = {
+                triggerHaptic()
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                context.startActivity(intent)
+            },
+        ),
         cornerRadius = 16.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable {
-                    triggerHaptic()
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                    context.startActivity(intent)
-                }
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,

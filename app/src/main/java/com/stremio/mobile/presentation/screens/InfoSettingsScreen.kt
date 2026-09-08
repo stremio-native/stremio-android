@@ -68,10 +68,7 @@ fun InfoSettingsScreen(
         )
     }
 
-    Column(
-        modifier = Modifier.padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
+    SettingsColumn {
         SettingsHeader(title = "Info & About", onBack = onBack)
 
         SectionLabel("APPLICATION DIAGNOSTICS")

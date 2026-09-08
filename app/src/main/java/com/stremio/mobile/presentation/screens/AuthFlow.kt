@@ -32,12 +32,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -58,6 +62,10 @@ import com.stremio.mobile.auth.FacebookLoginBridge
 import com.stremio.mobile.presentation.components.StremioMark
 import com.stremio.mobile.presentation.components.ThemedButton
 import com.stremio.mobile.presentation.components.ThemedTextButton
+import com.stremio.mobile.presentation.components.LocalIsTv
+import com.stremio.mobile.presentation.components.tvClickable
+import com.stremio.mobile.presentation.components.tvFocusIndicator
+import com.stremio.mobile.presentation.components.tvNotFocusable
 
 enum class AuthScreen {
     Intro,
@@ -135,6 +143,17 @@ private fun IntroScreen(
     onSignupClicked: () -> Unit,
 ) {
     val context = LocalContext.current
+    val isTv = LocalIsTv.current
+    val signUpFocusRequester = FocusRequester()
+    val facebookFocusRequester = FocusRequester()
+    val loginFocusRequester = FocusRequester()
+
+    if (isTv) {
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            signUpFocusRequester.requestFocus()
+        }
+    }
+
     DisposableEffect(onFacebookLogin, onFacebookLoginError) {
         val callback = object : FacebookCallback<LoginResult> {
             override fun onSuccess(result: LoginResult) {
@@ -180,7 +199,7 @@ private fun IntroScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.Center),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
+            verticalArrangement = Arrangement.spacedBy(if (isTv) 12.dp else 18.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -194,7 +213,7 @@ private fun IntroScreen(
                     fontWeight = FontWeight.Normal,
                 )
             }
-            Spacer(modifier = Modifier.height(68.dp))
+            Spacer(modifier = Modifier.height(if (isTv) 36.dp else 68.dp))
             Text(
                 text = "Freedom to Stream",
                 color = Color.White,
@@ -208,12 +227,27 @@ private fun IntroScreen(
                 fontSize = 18.sp,
                 lineHeight = 24.sp,
             )
-            Spacer(modifier = Modifier.height(34.dp))
-            AuthButton(text = "Sign up", enabled = !isLoading, onClick = onSignupClicked)
+            Spacer(modifier = Modifier.height(if (isTv) 24.dp else 34.dp))
+            AuthButton(
+                text = "Sign up",
+                enabled = !isLoading,
+                onClick = onSignupClicked,
+                modifier = Modifier
+                    .focusRequester(signUpFocusRequester)
+                    .focusProperties {
+                        down = facebookFocusRequester
+                    },
+            )
             AuthButton(
                 text = if (isLoading) "Connecting..." else "Continue with Facebook",
                 containerColor = Color(0xFF126FFF),
                 enabled = !isLoading,
+                modifier = Modifier
+                    .focusRequester(facebookFocusRequester)
+                    .focusProperties {
+                        up = signUpFocusRequester
+                        down = loginFocusRequester
+                    },
                 onClick = {
                     onClearError()
                     val activity = context.findActivity()
@@ -240,7 +274,7 @@ private fun IntroScreen(
                     lineHeight = 19.sp,
                 )
             }
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(if (isTv) 12.dp else 24.dp))
             Text(
                 text = "Already have an account?",
                 modifier = Modifier.align(Alignment.CenterHorizontally),
@@ -250,7 +284,12 @@ private fun IntroScreen(
             ThemedTextButton(
                 text = "Log in",
                 onClick = onLoginClicked,
-                modifier = Modifier.align(Alignment.CenterHorizontally),
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .focusRequester(loginFocusRequester)
+                    .focusProperties {
+                        up = facebookFocusRequester
+                    },
             )
         }
     }
@@ -273,6 +312,8 @@ private fun LoginScreen(
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     val autofillManager = LocalAutofillManager.current
+    val emailFocus = remember { FocusRequester() }
+    com.stremio.mobile.presentation.components.TvRequestFocus(emailFocus)
 
     AuthFormScaffold(
         title = "Log in",
@@ -285,7 +326,9 @@ private fun LoginScreen(
             value = email,
             onValueChange = { email = it },
             label = "Email",
-            modifier = Modifier.semantics { contentType = ContentType.EmailAddress }
+            modifier = Modifier
+                .focusRequester(emailFocus)
+                .semantics { contentType = ContentType.EmailAddress }
         )
         AuthTextField(
             value = password,
@@ -326,6 +369,8 @@ private fun SignupScreen(
     var localError by rememberSaveable { mutableStateOf<String?>(null) }
 
     val autofillManager = LocalAutofillManager.current
+    val emailFocus = remember { FocusRequester() }
+    com.stremio.mobile.presentation.components.TvRequestFocus(emailFocus)
 
     AuthFormScaffold(
         title = "Sign up",
@@ -338,7 +383,9 @@ private fun SignupScreen(
             value = email,
             onValueChange = { email = it },
             label = "Email",
-            modifier = Modifier.semantics { contentType = ContentType.EmailAddress }
+            modifier = Modifier
+                .focusRequester(emailFocus)
+                .semantics { contentType = ContentType.EmailAddress }
         )
         AuthTextField(
             value = password,
@@ -401,6 +448,8 @@ private fun AuthFormScaffold(
     onBack: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val backFocusRequester = FocusRequester()
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -410,7 +459,11 @@ private fun AuthFormScaffold(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            TextLink(text = "Back", onClick = onBack)
+            TextLink(
+                text = "Back",
+                onClick = onBack,
+                modifier = Modifier.focusRequester(backFocusRequester),
+            )
             Spacer(modifier = Modifier.height(42.dp))
             StremioMark(modifier = Modifier.size(46.dp))
             Spacer(modifier = Modifier.height(34.dp))
@@ -464,7 +517,9 @@ private fun AuthTextField(
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .tvFocusIndicator(RoundedCornerShape(12.dp)),
         label = { Text(label) },
         singleLine = true,
         visualTransformation = if (isPassword) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
@@ -490,12 +545,13 @@ private fun AuthCheckRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) },
+            .tvClickable(shape = RoundedCornerShape(12.dp)) { onCheckedChange(!checked) },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(
             checked = checked,
             onCheckedChange = onCheckedChange,
+            modifier = Modifier.tvNotFocusable(),
             colors = CheckboxDefaults.colors(
                 checkedColor = AccentPurple,
                 uncheckedColor = MutedText,
@@ -515,13 +571,14 @@ fun AuthButton(
     text: String,
     containerColor: Color = AccentPurple,
     enabled: Boolean = true,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     ThemedButton(
         text = text,
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(58.dp),
         containerColor = containerColor,
@@ -532,10 +589,12 @@ fun AuthButton(
 private fun TextLink(
     text: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Text(
         text = text,
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = modifier
+            .tvClickable(shape = RoundedCornerShape(8.dp), onClick = onClick),
         color = Color.White,
         fontSize = 15.sp,
         fontWeight = FontWeight.Bold,

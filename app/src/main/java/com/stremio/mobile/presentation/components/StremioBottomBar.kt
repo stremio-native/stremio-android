@@ -399,7 +399,8 @@ private fun BottomTab(
         modifier = Modifier
             .width(70.dp)
             .clip(RoundedCornerShape(999.dp))
-            .clickable(onClick = onClick),
+            .clickable(onClick = onClick)
+            .tvFocusIndicator(RoundedCornerShape(999.dp)),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {

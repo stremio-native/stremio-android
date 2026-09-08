@@ -1317,6 +1317,33 @@ class MainViewModel(
         streams.value = StreamsUiState()
     }
 
+    private fun restoreStreamsAfterPlayer() {
+        val current = streams.value
+        val item = current.forItem ?: return
+        if (current.isSeries) {
+            if (current.episodes.isNotEmpty()) {
+                streams.value = current.copy(
+                    isOpen = true,
+                    isResolving = false,
+                    isLoading = false,
+                    selectedVideoId = null,
+                    selectedEpisodeLabel = null,
+                    releaseDateLabel = null,
+                    streams = emptyList(),
+                    error = null,
+                )
+            } else {
+                streamsJob?.cancel()
+                streamsJob = launchStreamsMenuJob(item)
+            }
+        } else if (current.streams.isNotEmpty()) {
+            streams.value = current.copy(isOpen = true, isResolving = false, isLoading = false)
+        } else {
+            streamsJob?.cancel()
+            streamsJob = launchStreamsMenuJob(item)
+        }
+    }
+
     fun playStream(option: StreamOption) {
         if (isMobileDataWarning.value && isUsingMobileData()) {
             pendingMobileDataStream.value = option
@@ -1438,6 +1465,7 @@ class MainViewModel(
         showNextVideoPopup.value = false
         showNoSeedsBanner.value = false
         noSeedsReason.value = null
+        restoreStreamsAfterPlayer()
 
         lastServerActivityMs = 0L
         viewModelScope.launch {

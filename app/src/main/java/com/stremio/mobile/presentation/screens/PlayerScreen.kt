@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package com.stremio.mobile.presentation.screens
 
 import android.os.Build
@@ -14,10 +16,13 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -34,16 +39,27 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -91,6 +107,12 @@ import com.stremio.mobile.presentation.components.LocalGlobalBackdrop
 import com.stremio.mobile.presentation.components.ThemedButton
 import com.stremio.mobile.presentation.components.ThemedTextButton
 import com.stremio.mobile.presentation.components.ThemedIconButton
+import com.stremio.mobile.presentation.components.LocalIsTv
+import com.stremio.mobile.presentation.components.TvRequestFocus
+import com.stremio.mobile.presentation.components.disableTvFocus
+import com.stremio.mobile.presentation.components.requestTvFocusSafely
+import com.stremio.mobile.presentation.components.tvFocusIndicator
+import com.stremio.mobile.presentation.components.tvListItemSpacing
 
 @Composable
 fun PlayerScreen(
@@ -129,7 +151,9 @@ fun PlayerScreen(
     liquidGlassTuning: LiquidGlassTuning = LiquidGlassTuning(),
     modifier: Modifier = Modifier,
 ) {
-    BackHandler(onBack = onBack)
+    val isTv = LocalIsTv.current
+    val playerSurfaceFocus = remember { FocusRequester() }
+    val playButtonFocus = remember { FocusRequester() }
 
     val runtimeStateHolder = player?.runtimeState?.collectAsState()
         ?: remember { mutableStateOf(PlayerRuntimeState()) }
@@ -182,6 +206,16 @@ fun PlayerScreen(
     var lastActivityTime by remember { mutableStateOf(System.currentTimeMillis()) }
     val coroutineScope = rememberCoroutineScope()
     var singleTapJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var suppressPlayerExitUntilMs by remember { mutableStateOf(0L) }
+    var hardwareBackWillExit by remember { mutableStateOf(false) }
+
+    fun revealPlayerOverlay() {
+        val now = System.currentTimeMillis()
+        lastActivityTime = now
+        showControls = true
+        suppressPlayerExitUntilMs = now + 500L
+        hardwareBackWillExit = true
+    }
     // Timestamp of the last gesture-driven (silent) seek. Used to ignore the pause→buffer→resume
     // playback transitions it triggers, so a swipe/double-tap seek never wakes the controls.
     var lastSilentSeekMs by remember { mutableStateOf(0L) }
@@ -236,6 +270,23 @@ fun PlayerScreen(
     // Stats Panel
     var showStatsPanel by remember { mutableStateOf(false) }
     var torrentStats by remember { mutableStateOf<JSONObject?>(null) }
+
+    BackHandler {
+        when {
+            showAudioDialog -> showAudioDialog = false
+            showSubtitleDialog -> showSubtitleDialog = false
+            showStatsPanel -> showStatsPanel = false
+            !showControls || !hardwareBackWillExit -> revealPlayerOverlay()
+            System.currentTimeMillis() < suppressPlayerExitUntilMs -> Unit
+            else -> onBack()
+        }
+    }
+
+    LaunchedEffect(showControls) {
+        if (!showControls) {
+            hardwareBackWillExit = false
+        }
+    }
 
     val infoHash = remember(activeUri) {
         activeUri?.let { uri ->
@@ -393,12 +444,24 @@ fun PlayerScreen(
     }
 
     // Inactivity Auto-Hide Timer
-    LaunchedEffect(showControls, isPlaying, lastActivityTime) {
+    LaunchedEffect(showControls, isPlaying, lastActivityTime, isTv) {
         if (showControls && isPlaying) {
-            delay(3000)
-            if (System.currentTimeMillis() - lastActivityTime >= 3000) {
+            val timeoutMs = if (isTv) 5000L else 3000L
+            delay(timeoutMs)
+            if (System.currentTimeMillis() - lastActivityTime >= timeoutMs) {
                 showControls = false
             }
+        }
+    }
+
+    LaunchedEffect(isTv, showControls, player, activeUri) {
+        if (!isTv) return@LaunchedEffect
+        withFrameNanos { }
+        delay(64)
+        if (showControls) {
+            playButtonFocus.requestTvFocusSafely()
+        } else {
+            playerSurfaceFocus.requestTvFocusSafely()
         }
     }
 
@@ -630,7 +693,70 @@ fun PlayerScreen(
         Box(
             modifier = modifier
                 .fillMaxSize()
-                .background(Color.Black),
+                .background(Color.Black)
+                .then(
+                    if (isTv) {
+                        Modifier
+                            .focusGroup()
+                            .focusProperties {
+                                canFocus = !showControls
+                                exit = { FocusRequester.Cancel }
+                            }
+                            .then(
+                                if (!showControls) {
+                                    Modifier
+                                        .focusRequester(playerSurfaceFocus)
+                                        .focusable()
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .onPreviewKeyEvent { event ->
+                                val keyCode = event.nativeKeyEvent.keyCode
+                                val isBack = keyCode == android.view.KeyEvent.KEYCODE_BACK ||
+                                    keyCode == android.view.KeyEvent.KEYCODE_ESCAPE ||
+                                    event.key == Key.Back ||
+                                    event.key == Key.Escape
+                                if (isBack) {
+                                    false
+                                } else if (event.type != KeyEventType.KeyDown) {
+                                    false
+                                } else {
+                                    resetActivityTimer()
+                                    if (showControls) {
+                                        false
+                                    } else when (keyCode) {
+                                        android.view.KeyEvent.KEYCODE_DPAD_CENTER,
+                                        android.view.KeyEvent.KEYCODE_ENTER,
+                                        android.view.KeyEvent.KEYCODE_SPACE,
+                                        android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> true
+
+                                        android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                            controlsActions.onSkipBack()
+                                            true
+                                        }
+
+                                        android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                            controlsActions.onSkipForward()
+                                            true
+                                        }
+
+                                        android.view.KeyEvent.KEYCODE_DPAD_UP,
+                                        android.view.KeyEvent.KEYCODE_DPAD_DOWN -> true
+
+                                        android.view.KeyEvent.KEYCODE_MEDIA_STOP -> {
+                                            onBack()
+                                            true
+                                        }
+
+                                        else -> false
+                                    }
+                                }
+                            }
+                    } else {
+                        Modifier
+                    }
+                ),
         ) {
             // Backend-provided player view.
             key(player, activeUri) {
@@ -640,14 +766,22 @@ fun PlayerScreen(
                         .then(if (controlsBackdrop != null) Modifier.layerBackdrop(controlsBackdrop) else Modifier)
                 ) {
                     AndroidView(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .focusProperties { canFocus = false },
                         factory = { context ->
                             (player?.createView(context) ?: View(context)).apply {
                                 keepScreenOn = true
+                                if (isTv) {
+                                    disableTvFocus()
+                                }
                                 onAttachView(this)
                             }
                         },
-                        update = {
+                        update = { view ->
+                            if (isTv) {
+                                view.disableTvFocus()
+                            }
                             player?.setResizeMode(resizeMode)
                             player?.setSubtitleStyle(subtitleStyle)
                         }
@@ -662,6 +796,7 @@ fun PlayerScreen(
         // Tap / swipe gesture layer. Detection + the transient HUDs live in PlayerGestures.kt;
         // player-owned actions are routed back through callbacks so the gesture layer never
         // touches showControls directly (VLC-style decoupling).
+        if (!isTv) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -708,6 +843,7 @@ fun PlayerScreen(
                     key2 = activeUri,
                 )
         )
+        }
 
         // Playback error overlay — shown when the codec/source fails so it's visible instead
         // of an infinite buffering spinner, with a one-tap retry.
@@ -873,6 +1009,7 @@ fun PlayerScreen(
                         glassEffectsMode = glassEffectsMode,
                         hapticsEnabled = glassHapticsEnabled,
                         hapticsIntensity = hapticsIntensity,
+                        playFocusRequester = playButtonFocus,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -881,6 +1018,7 @@ fun PlayerScreen(
                 state = controlsState,
                 actions = controlsActions,
                 backdrop = controlsBackdrop,
+                playFocusRequester = playButtonFocus,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -1102,7 +1240,8 @@ fun AudioTracksDialog(
                     fontWeight = FontWeight.Bold,
                 )
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(tvListItemSpacing(8.dp)),
+                    contentPadding = playerListContentPadding(),
                     modifier = Modifier.weight(1f, fill = false)
                 ) {
                     items(tracks) { track ->
@@ -1244,7 +1383,8 @@ fun WebSubtitlesDialog(
                     ) {
                         MenuHeader("Languages")
                         LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(tvListItemSpacing(6.dp)),
+                            contentPadding = playerListContentPadding(),
                             modifier = Modifier.weight(1f)
                         ) {
                             item {
@@ -1270,7 +1410,8 @@ fun WebSubtitlesDialog(
                     ) {
                         MenuHeader("Variants")
                         LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(tvListItemSpacing(6.dp)),
+                            contentPadding = playerListContentPadding(),
                             modifier = Modifier.weight(1f)
                         ) {
                             if (variants.isEmpty()) {
@@ -1360,6 +1501,56 @@ private fun MenuHeader(label: String) {
     )
 }
 
+private val PlayerListRowShape = RoundedCornerShape(12.dp)
+
+@Composable
+private fun playerListContentPadding(): PaddingValues =
+    if (LocalIsTv.current) PaddingValues(horizontal = 6.dp, vertical = 6.dp) else PaddingValues(0.dp)
+
+@Composable
+private fun PlayerSelectableRow(
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    minHeight: Dp,
+    contentPadding: PaddingValues,
+    content: @Composable RowScope.(focused: Boolean) -> Unit,
+) {
+    val isTv = LocalIsTv.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+    val showFocus = isTv && focused
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = minHeight)
+            .clip(PlayerListRowShape)
+            .background(
+                when {
+                    showFocus -> Color.White
+                    isSelected -> Color(0x337457F2)
+                    else -> Color.Transparent
+                },
+                PlayerListRowShape,
+            )
+            .then(
+                if (isTv) {
+                    Modifier.tvFocusIndicator(PlayerListRowShape, focusedScale = 1.06f)
+                } else {
+                    Modifier
+                },
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = if (isTv) null else LocalIndication.current,
+                onClick = onClick,
+            )
+            .padding(contentPadding),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+        content = { content(showFocus) },
+    )
+}
+
 @Composable
 private fun TrackInfoRow(
     title: String,
@@ -1367,32 +1558,32 @@ private fun TrackInfoRow(
     isSelected: Boolean,
     onClick: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 54.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (isSelected) Color(0x337457F2) else Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    PlayerSelectableRow(
+        isSelected = isSelected,
+        onClick = onClick,
+        minHeight = 54.dp,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+    ) { focused ->
+        val titleColor = when {
+            focused -> Color.Black
+            isSelected -> Color.White
+            else -> Color(0xFFE2E2E6)
+        }
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
                 text = title,
-                color = if (isSelected) Color.White else Color(0xFFE2E2E6),
+                color = titleColor,
                 fontSize = 14.sp,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                fontWeight = if (isSelected || focused) FontWeight.Bold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = subtitle,
-                color = MutedText,
+                color = if (focused) Color.Black.copy(alpha = 0.62f) else MutedText,
                 fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1402,7 +1593,7 @@ private fun TrackInfoRow(
             Icon(
                 imageVector = Icons.Outlined.Check,
                 contentDescription = null,
-                tint = AccentPurple,
+                tint = if (focused) Color.Black else AccentPurple,
                 modifier = Modifier
                     .padding(start = 8.dp)
                     .size(18.dp)
@@ -1420,32 +1611,31 @@ private fun SubtitleVariantRow(
     onCopyId: (String) -> Unit,
 ) {
     val downloadUrl = track.fallbackUrl ?: track.url
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 58.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (track.selected) Color(0x337457F2) else Color.Transparent)
-            .clickable(onClick = onSelect)
-            .padding(start = 12.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    PlayerSelectableRow(
+        isSelected = track.selected,
+        onClick = onSelect,
+        minHeight = 58.dp,
+        contentPadding = PaddingValues(start = 12.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
+    ) { focused ->
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
                 text = track.label,
-                color = if (track.selected) Color.White else Color(0xFFE2E2E6),
+                color = when {
+                    focused -> Color.Black
+                    track.selected -> Color.White
+                    else -> Color(0xFFE2E2E6)
+                },
                 fontSize = 13.sp,
-                fontWeight = if (track.selected) FontWeight.Bold else FontWeight.Medium,
+                fontWeight = if (track.selected || focused) FontWeight.Bold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = subtitleOriginLabel(track),
-                color = MutedText,
+                color = if (focused) Color.Black.copy(alpha = 0.62f) else MutedText,
                 fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1459,13 +1649,15 @@ private fun SubtitleVariantRow(
                         imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
                         contentDescription = "Open subtitle URL",
                         onClick = { onOpenUrl(downloadUrl) },
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(32.dp),
+                        iconTint = if (focused) Color.Black else Color.White,
                     )
                     ThemedIconButton(
                         imageVector = Icons.Outlined.ContentCopy,
                         contentDescription = "Copy subtitle URL",
                         onClick = { onCopyUrl(downloadUrl) },
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(32.dp),
+                        iconTint = if (focused) Color.Black else Color.White,
                     )
                 }
                 if (!track.addonSubtitleId.isNullOrBlank()) {
@@ -1473,7 +1665,8 @@ private fun SubtitleVariantRow(
                         imageVector = Icons.Outlined.Badge,
                         contentDescription = "Copy subtitle ID",
                         onClick = { onCopyId(track.addonSubtitleId) },
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(32.dp),
+                        iconTint = if (focused) Color.Black else Color.White,
                     )
                 }
             }
@@ -1483,7 +1676,7 @@ private fun SubtitleVariantRow(
             Icon(
                 imageVector = Icons.Outlined.Check,
                 contentDescription = null,
-                tint = AccentPurple,
+                tint = if (focused) Color.Black else AccentPurple,
                 modifier = Modifier
                     .padding(start = 4.dp)
                     .size(18.dp)
@@ -1549,7 +1742,8 @@ fun TrackSelectorDialog(
                 )
 
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(tvListItemSpacing(8.dp)),
+                    contentPadding = playerListContentPadding(),
                     modifier = Modifier.weight(1f, fill = false)
                 ) {
                     if (hasNoneOption) {
@@ -1587,22 +1781,21 @@ fun TrackRow(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (isSelected) Color(0x337457F2) else Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    PlayerSelectableRow(
+        isSelected = isSelected,
+        onClick = onClick,
+        minHeight = 48.dp,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+    ) { focused ->
         Text(
             text = label,
-            color = if (isSelected) Color.White else Color(0xFFE2E2E6),
+            color = when {
+                focused -> Color.Black
+                isSelected -> Color.White
+                else -> Color(0xFFE2E2E6)
+            },
             fontSize = 15.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+            fontWeight = if (isSelected || focused) FontWeight.Bold else FontWeight.Normal,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
@@ -1611,7 +1804,7 @@ fun TrackRow(
             Icon(
                 imageVector = Icons.Outlined.Check,
                 contentDescription = null,
-                tint = AccentPurple,
+                tint = if (focused) Color.Black else AccentPurple,
                 modifier = Modifier
                     .padding(start = 8.dp)
                     .size(18.dp)
@@ -1719,7 +1912,8 @@ fun SubtitlesCustomizationDialog(
                         )
 
                         LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(tvListItemSpacing(6.dp)),
+                            contentPadding = playerListContentPadding(),
                             modifier = Modifier.weight(1f)
                         ) {
                             item {

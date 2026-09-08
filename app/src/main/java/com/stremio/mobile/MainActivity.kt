@@ -2,6 +2,7 @@ package com.stremio.mobile
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -13,6 +14,7 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.stremio.mobile.auth.FacebookLoginBridge
+import com.stremio.mobile.presentation.components.isTelevision
 import com.stremio.mobile.presentation.screens.StremioMobileApp
 import com.stremio.mobile.presentation.viewmodel.MainViewModel
 
@@ -49,11 +51,18 @@ class MainActivity : ComponentActivity() {
         }
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        requestNotificationPermission()
+        val isTv = isTelevision(this)
+        if (isTv) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
+        requestNotificationPermission(isTv)
         viewModel.acceptIntent(intent)
 
         setContent {
-            StremioMobileApp(viewModel = viewModel)
+            StremioMobileApp(
+                viewModel = viewModel,
+                isTv = isTv,
+            )
         }
     }
 
@@ -81,8 +90,8 @@ class MainActivity : ComponentActivity() {
         viewModel.onAppBackgrounded()
     }
 
-    private fun requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= 33) {
+    private fun requestNotificationPermission(isTv: Boolean) {
+        if (!isTv && Build.VERSION.SDK_INT >= 33) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }

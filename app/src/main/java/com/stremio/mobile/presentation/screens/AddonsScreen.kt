@@ -29,6 +29,7 @@ import com.stremio.mobile.presentation.components.AddonRow
 import com.stremio.mobile.presentation.components.EmptyState
 import com.stremio.mobile.presentation.components.LoadingRow
 import com.stremio.mobile.presentation.components.ThemedButton
+import com.stremio.mobile.presentation.components.tvListItemSpacing
 import com.stremio.mobile.presentation.state.AddonsUiState
 import androidx.compose.ui.graphics.Color
 
@@ -43,10 +44,7 @@ fun AddonsScreen(
     onUninstall: (AddonItem) -> Unit,
     onInstallByUrl: (String) -> Boolean,
 ) {
-    Column(
-        modifier = Modifier.padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
+    SettingsColumn {
         AddonsHeaderAndControls(
             state = state,
             backdrop = backdrop,
@@ -61,7 +59,7 @@ fun AddonsScreen(
             state.items.isEmpty() -> EmptyState(
                 if (state.isBrowsingRemote) "No addons found in this catalog." else "No addons installed."
             )
-            else -> Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            else -> Column(verticalArrangement = Arrangement.spacedBy(tvListItemSpacing(10.dp))) {
                 state.items.forEach { addon ->
                     AddonRow(
                         addon = addon,
@@ -89,7 +87,7 @@ fun AddonsHeaderAndControls(
 
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(tvListItemSpacing(16.dp)),
     ) {
         SettingsHeader(title = "Addons", onBack = onBack)
 

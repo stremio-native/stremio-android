@@ -366,6 +366,23 @@ class MpvStreamPlayer(
         private val onSurfaceReady: () -> Unit,
         private val onSurfaceDestroyed: () -> Unit,
     ) : BaseMPVView(context, null) {
+        init {
+            isFocusable = false
+            isFocusableInTouchMode = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            isFocusable = false
+            isFocusableInTouchMode = false
+        }
+
+        override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean = false
+
+        override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean = false
+
+        override fun onKeyUp(keyCode: Int, event: android.view.KeyEvent): Boolean = false
         override fun initOptions() {
             setVo("gpu")
             MPVLib.setOptionString("profile", "fast")
@@ -398,7 +415,9 @@ class MpvStreamPlayer(
             MPVLib.setOptionString("audio-set-media-role", "yes")
             MPVLib.setOptionString("tls-verify", "yes")
             MPVLib.setOptionString("tls-ca-file", "${context.filesDir.absolutePath}/cacert.pem")
-            MPVLib.setOptionString("input-default-bindings", "yes")
+            MPVLib.setOptionString("input-default-bindings", "no")
+            MPVLib.setOptionString("input-vo-keyboard", "no")
+            MPVLib.setOptionString("osc", "no")
             MPVLib.setOptionString("demuxer-max-bytes", "${64 * 1024 * 1024}")
             MPVLib.setOptionString("demuxer-max-back-bytes", "${64 * 1024 * 1024}")
         }

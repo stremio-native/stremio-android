@@ -76,10 +76,7 @@ fun LiquidGlassDevScreen(
         onSetLiquidGlassTuning(draftTuning.clamped())
     }
 
-    Column(
-        modifier = Modifier.padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
+    SettingsColumn {
         SettingsHeader(title = "Liquid Glass Lab", onBack = onBack)
 
         Text(

@@ -1,7 +1,5 @@
 package com.stremio.mobile.presentation.screens
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -33,10 +31,7 @@ fun InterfaceSettingsScreen(
     onNavigateToLiquidGlassLab: () -> Unit,
     onBack: () -> Unit
 ) {
-    Column(
-        modifier = Modifier.padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
+    SettingsColumn {
         SettingsHeader(title = "Interface Settings", onBack = onBack)
 
 

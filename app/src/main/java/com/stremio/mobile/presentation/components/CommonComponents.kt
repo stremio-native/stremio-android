@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.stremio.mobile.core.theme.AccentPurple
 import com.stremio.mobile.core.theme.MutedText
-import com.stremio.mobile.core.theme.ScreenGutter
 
 @Composable
 fun StremioMark(modifier: Modifier = Modifier) {
@@ -36,7 +35,7 @@ fun StremioMark(modifier: Modifier = Modifier) {
 fun SectionTitle(title: String) {
     Text(
         text = title,
-        modifier = Modifier.padding(start = ScreenGutter, end = 12.dp),
+        modifier = Modifier.padding(start = contentGutter(), end = 12.dp),
         color = Color.White,
         fontSize = 22.sp,
         lineHeight = 27.sp,
@@ -48,7 +47,7 @@ fun SectionTitle(title: String) {
 fun EmptyState(message: String) {
     Text(
         text = message,
-        modifier = Modifier.padding(horizontal = ScreenGutter),
+        modifier = Modifier.padding(horizontal = contentGutter()),
         color = MutedText,
         fontSize = 15.sp,
         lineHeight = 21.sp,

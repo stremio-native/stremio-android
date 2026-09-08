@@ -1,7 +1,5 @@
 package com.stremio.mobile.presentation.screens
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,10 +21,7 @@ fun PlayerSettingsScreen(
     onUpdateSettings: (com.stremio.core.types.profile.Profile.Settings) -> Unit,
     onBack: () -> Unit
 ) {
-    Column(
-        modifier = Modifier.padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
+    SettingsColumn {
         SettingsHeader(title = "Player Settings", onBack = onBack)
 
         if (settings != null) {

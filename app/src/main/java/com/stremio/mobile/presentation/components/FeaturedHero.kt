@@ -23,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -37,7 +38,6 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.stremio.mobile.data.model.CatalogItem
 import com.stremio.mobile.core.theme.CardFallback
-import com.stremio.mobile.core.theme.ScreenGutter
 
 @Composable
 fun FeaturedHero(
@@ -52,10 +52,16 @@ fun FeaturedHeroPager(
     items: List<CatalogItem>,
     onClick: (CatalogItem) -> Unit,
     modifier: Modifier = Modifier,
+    initialFocusRequester: FocusRequester? = null,
 ) {
     if (items.isEmpty()) return
-    if (items.size == 1) {
-        FeaturedHeroCard(item = items.first(), onClick = onClick, modifier = modifier)
+    val isTv = LocalIsTv.current
+    if (items.size == 1 || isTv) {
+        FeaturedHeroCard(
+            item = items.first(),
+            onClick = onClick,
+            modifier = modifier.tvContentFocus(initialFocusRequester),
+        )
         return
     }
 
@@ -120,12 +126,14 @@ fun FeaturedHeroCard(
         return
     }
 
+    val shape = RoundedCornerShape(26.dp)
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(230.dp)
-            .padding(start = ScreenGutter, end = ScreenGutter)
-            .clip(RoundedCornerShape(26.dp))
+            .height(if (LocalIsTv.current) 320.dp else 230.dp)
+            .padding(start = contentGutter(), end = contentGutter())
+            .tvFocusIndicator(shape)
+            .clip(shape)
             .background(CardFallback)
             .clickable { onClick(item) },
     ) {

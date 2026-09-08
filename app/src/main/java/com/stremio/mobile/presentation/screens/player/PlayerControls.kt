@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,6 +60,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
@@ -84,6 +88,12 @@ import com.stremio.mobile.presentation.components.LiquidGlassCard
 import com.stremio.mobile.presentation.components.GlassLegibility
 import com.stremio.mobile.presentation.components.LocalGlassLegibility
 import com.stremio.mobile.presentation.components.StaticGlassCard
+import com.stremio.mobile.presentation.components.LocalIsTv
+import com.stremio.mobile.presentation.components.tvClickable
+import com.stremio.mobile.presentation.components.tvFocusIndicator
+import com.stremio.mobile.presentation.components.tvFocusTrap
+import com.stremio.mobile.presentation.components.tvFocusVertical
+import com.stremio.mobile.presentation.components.tvSliderFocusNavigation
 import kotlin.math.abs
 
 data class PlayerControlsState(
@@ -123,10 +133,15 @@ fun ClassicPlayerControls(
     state: PlayerControlsState,
     actions: PlayerControlsActions,
     backdrop: LayerBackdrop?,
+    playFocusRequester: FocusRequester? = null,
     modifier: Modifier = Modifier,
 ) {
     if (state.showControls) {
-        Box(modifier = modifier.fillMaxSize()) {
+        val isTv = LocalIsTv.current
+        val backFocus = remember { FocusRequester() }
+        val sliderFocus = remember { FocusRequester() }
+        val bottomFocus = remember { FocusRequester() }
+        Box(modifier = modifier.fillMaxSize().tvFocusTrap()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -161,8 +176,10 @@ fun ClassicPlayerControls(
                 IconButton(
                     onClick = actions.onBack,
                     modifier = Modifier
+                        .then(if (isTv) Modifier.focusRequester(backFocus).tvFocusVertical(down = playFocusRequester) else Modifier)
                         .clip(CircleShape)
                         .background(Color(0x33000000))
+                        .tvFocusIndicator(CircleShape)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
@@ -184,24 +201,28 @@ fun ClassicPlayerControls(
                 )
             }
 
-            if (!state.isBuffering) {
+            if (!state.isBuffering || LocalIsTv.current) {
                 Row(
                     modifier = Modifier.align(Alignment.Center),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(18.dp)
                 ) {
+                    var skipBackFocused by remember { mutableStateOf(false) }
                     IconButton(
                         onClick = actions.onSkipBack,
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(if (isTv) 56.dp else 38.dp)
+                            .then(if (isTv) Modifier.tvFocusVertical(up = backFocus, down = sliderFocus) else Modifier)
+                            .onFocusChanged { skipBackFocused = it.isFocused || it.hasFocus }
                             .clip(CircleShape)
-                            .background(Color(0x33000000))
+                            .background(if (skipBackFocused) Color.White else Color(0x66000000))
+                            .tvFocusIndicator(CircleShape, focusedScale = 1.16f)
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.FastRewind,
                             contentDescription = "Rewind 10s",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
+                            tint = if (skipBackFocused) Color.Black else Color.White,
+                            modifier = Modifier.size(if (isTv) 30.dp else 20.dp)
                         )
                     }
 
@@ -209,8 +230,11 @@ fun ClassicPlayerControls(
                         onClick = actions.onPlayPause,
                         modifier = Modifier
                             .size(56.dp)
+                            .then(if (playFocusRequester != null) Modifier.focusRequester(playFocusRequester) else Modifier)
+                            .then(if (isTv) Modifier.tvFocusVertical(up = backFocus, down = sliderFocus) else Modifier)
                             .clip(CircleShape)
                             .background(Color(0x4D000000))
+                            .tvFocusIndicator(CircleShape)
                             .border(1.5.dp, Color(0x33FFFFFF), CircleShape)
                     ) {
                         Icon(
@@ -221,18 +245,22 @@ fun ClassicPlayerControls(
                         )
                     }
 
+                    var skipForwardFocused by remember { mutableStateOf(false) }
                     IconButton(
                         onClick = actions.onSkipForward,
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(if (isTv) 56.dp else 38.dp)
+                            .then(if (isTv) Modifier.tvFocusVertical(up = backFocus, down = sliderFocus) else Modifier)
+                            .onFocusChanged { skipForwardFocused = it.isFocused || it.hasFocus }
                             .clip(CircleShape)
-                            .background(Color(0x33000000))
+                            .background(if (skipForwardFocused) Color.White else Color(0x66000000))
+                            .tvFocusIndicator(CircleShape, focusedScale = 1.16f)
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.FastForward,
                             contentDescription = "Forward 10s",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
+                            tint = if (skipForwardFocused) Color.Black else Color.White,
+                            modifier = Modifier.size(if (isTv) 30.dp else 20.dp)
                         )
                     }
                 }
@@ -247,6 +275,9 @@ fun ClassicPlayerControls(
                 PlayerTimeline(
                     state = state,
                     actions = actions,
+                    sliderFocus = if (isTv) sliderFocus else null,
+                    upFocus = playFocusRequester,
+                    downFocus = bottomFocus,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 6.dp),
@@ -267,7 +298,9 @@ fun ClassicPlayerControls(
                             onClick = actions.onPlayPause,
                             modifier = Modifier
                                 .size(44.dp)
+                                .then(if (isTv) Modifier.focusRequester(bottomFocus).tvFocusVertical(up = sliderFocus) else Modifier)
                                 .clip(RoundedCornerShape(12.dp))
+                                .tvFocusIndicator(RoundedCornerShape(12.dp))
                         ) {
                             Icon(
                                 imageVector = if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
@@ -282,6 +315,7 @@ fun ClassicPlayerControls(
                             modifier = Modifier
                                 .size(44.dp)
                                 .clip(RoundedCornerShape(12.dp))
+                                .tvFocusIndicator(RoundedCornerShape(12.dp))
                         ) {
                             Icon(
                                 imageVector = volumeIcon(state),
@@ -302,6 +336,7 @@ fun ClassicPlayerControls(
                                 modifier = Modifier
                                     .size(44.dp)
                                     .clip(RoundedCornerShape(12.dp))
+                                    .tvFocusIndicator(RoundedCornerShape(12.dp))
                                     .background(if (state.isStatsVisible) AccentPurple else Color.Transparent)
                             ) {
                                 Icon(
@@ -317,7 +352,7 @@ fun ClassicPlayerControls(
                             onClick = actions.onCycleSpeed,
                             shape = RoundedCornerShape(12.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                            modifier = Modifier.height(44.dp)
+                            modifier = Modifier.height(44.dp).tvFocusIndicator(RoundedCornerShape(12.dp))
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.Speed,
@@ -352,7 +387,7 @@ fun ClassicPlayerControls(
                             onClick = actions.onCycleAspect,
                             shape = RoundedCornerShape(12.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                            modifier = Modifier.height(44.dp)
+                            modifier = Modifier.height(44.dp).tvFocusIndicator(RoundedCornerShape(12.dp))
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.AspectRatio,
@@ -383,15 +418,20 @@ fun ModernPlayerControls(
     glassEffectsMode: String,
     hapticsEnabled: Boolean = true,
     hapticsIntensity: String = "Medium",
+    playFocusRequester: FocusRequester? = null,
     modifier: Modifier = Modifier,
 ) {
     val haptic = LocalHapticFeedback.current
 
     if (state.showControls) {
+        val isTv = LocalIsTv.current
+        val backFocus = remember { FocusRequester() }
+        val sliderFocus = remember { FocusRequester() }
         CompositionLocalProvider(LocalGlassLegibility provides GlassLegibility.mediaOverlay()) {
             Box(
                 modifier = modifier
                     .fillMaxSize()
+                    .tvFocusTrap()
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(Color(0xE60A0A14), Color.Transparent, Color(0xE60A0A14))
@@ -403,12 +443,14 @@ fun ModernPlayerControls(
                     actions = actions,
                     backdrop = backdrop,
                     glassEffectsMode = glassEffectsMode,
+                    backFocus = if (isTv) backFocus else null,
+                    downFocus = playFocusRequester,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(horizontal = 18.dp, vertical = 18.dp),
                 )
 
-                if (!state.isBuffering) {
+                if (!state.isBuffering || LocalIsTv.current) {
                     Row(
                         modifier = Modifier.align(Alignment.Center),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -419,7 +461,8 @@ fun ModernPlayerControls(
                             contentDescription = "Rewind 10s",
                             backdrop = backdrop,
                             glassEffectsMode = glassEffectsMode,
-                            size = 38,
+                            size = if (isTv) 52 else 38,
+                            modifier = if (isTv) Modifier.tvFocusVertical(up = backFocus, down = sliderFocus) else Modifier,
                             onClick = {
                                 if (hapticsEnabled) {
                                     haptic.performHapticFeedback(
@@ -456,8 +499,11 @@ fun ModernPlayerControls(
                             Box(
                                 modifier = Modifier
                                     .matchParentSize()
+                                    .then(if (playFocusRequester != null) Modifier.focusRequester(playFocusRequester) else Modifier)
+                                    .then(if (isTv) Modifier.tvFocusVertical(up = backFocus, down = sliderFocus) else Modifier)
                                     .clip(CircleShape)
                                     .background(Color(0x16000000))
+                                    .tvFocusIndicator(CircleShape)
                                     .clickable(onClick = {
                                         if (hapticsEnabled) {
                                             haptic.performHapticFeedback(
@@ -484,7 +530,8 @@ fun ModernPlayerControls(
                         contentDescription = "Forward 10s",
                         backdrop = backdrop,
                         glassEffectsMode = glassEffectsMode,
-                        size = 38,
+                        size = if (isTv) 52 else 38,
+                        modifier = if (isTv) Modifier.tvFocusVertical(up = backFocus, down = sliderFocus) else Modifier,
                         onClick = {
                             if (hapticsEnabled) {
                                 haptic.performHapticFeedback(
@@ -521,6 +568,8 @@ fun ModernPlayerControls(
                             actions = actions,
                             hapticsEnabled = hapticsEnabled,
                             hapticsIntensity = hapticsIntensity,
+                            sliderFocus = if (isTv) sliderFocus else null,
+                            upFocus = playFocusRequester,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -537,6 +586,8 @@ private fun ModernTopPill(
     backdrop: LayerBackdrop?,
     glassEffectsMode: String,
     modifier: Modifier = Modifier,
+    backFocus: FocusRequester? = null,
+    downFocus: FocusRequester? = null,
 ) {
     // iOS 27 Liquid Glass favors a quiet, content-led chrome: back + title + a single
     // overflow affordance. No clock/battery chip (the system status bar already owns that
@@ -558,7 +609,13 @@ private fun ModernTopPill(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            IconButton(onClick = actions.onBack, modifier = Modifier.size(40.dp)) {
+            IconButton(
+                onClick = actions.onBack,
+                modifier = Modifier
+                    .size(40.dp)
+                    .then(if (backFocus != null) Modifier.focusRequester(backFocus).tvFocusVertical(down = downFocus) else Modifier)
+                    .tvFocusIndicator(CircleShape),
+            ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
                     contentDescription = "Back",
@@ -578,7 +635,13 @@ private fun ModernTopPill(
             )
 
             Box {
-                IconButton(onClick = { moreExpanded = true }, modifier = Modifier.size(40.dp)) {
+                IconButton(
+                    onClick = { moreExpanded = true },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .tvFocusVertical(down = downFocus)
+                        .tvFocusIndicator(CircleShape),
+                ) {
                     Icon(
                         imageVector = Icons.Outlined.MoreVert,
                         contentDescription = "More",
@@ -591,11 +654,9 @@ private fun ModernTopPill(
                     modifier = Modifier.background(Color(0xEE141422)),
                 ) {
                     if (state.canSelectSubtitles) {
-                        DropdownMenuItem(
-                            text = { Text("Subtitles", color = Color.White) },
-                            leadingIcon = {
-                                Icon(Icons.Outlined.Subtitles, contentDescription = null, tint = Color.White)
-                            },
+                        PlayerMenuItem(
+                            text = "Subtitles",
+                            icon = Icons.Outlined.Subtitles,
                             onClick = {
                                 moreExpanded = false
                                 actions.onShowSubtitles()
@@ -603,58 +664,43 @@ private fun ModernTopPill(
                         )
                     }
                     if (state.canSelectAudio) {
-                        DropdownMenuItem(
-                            text = { Text("Audio Tracks", color = Color.White) },
-                            leadingIcon = {
-                                Icon(Icons.Outlined.Audiotrack, contentDescription = null, tint = Color.White)
-                            },
+                        PlayerMenuItem(
+                            text = "Audio Tracks",
+                            icon = Icons.Outlined.Audiotrack,
                             onClick = {
                                 moreExpanded = false
                                 actions.onShowAudio()
                             },
                         )
                     }
-                    DropdownMenuItem(
-                        text = { Text("Speed: ${state.currentSpeed}x", color = Color.White) },
-                        leadingIcon = {
-                            Icon(Icons.Outlined.Speed, contentDescription = null, tint = Color.White)
-                        },
+                    PlayerMenuItem(
+                        text = "Speed: ${state.currentSpeed}x",
+                        icon = Icons.Outlined.Speed,
                         onClick = {
                             moreExpanded = false
                             actions.onCycleSpeed()
                         },
                     )
-                    DropdownMenuItem(
-                        text = { Text("Aspect: ${resizeLabel(state.resizeMode)}", color = Color.White) },
-                        leadingIcon = {
-                            Icon(Icons.Outlined.AspectRatio, contentDescription = null, tint = Color.White)
-                        },
+                    PlayerMenuItem(
+                        text = "Aspect: ${resizeLabel(state.resizeMode)}",
+                        icon = Icons.Outlined.AspectRatio,
                         onClick = {
                             moreExpanded = false
                             actions.onCycleAspect()
                         },
                     )
-                    DropdownMenuItem(
-                        text = { Text(if (state.isMuted) "Unmute" else "Mute", color = Color.White) },
-                        leadingIcon = {
-                            Icon(volumeIcon(state), contentDescription = null, tint = Color.White)
-                        },
+                    PlayerMenuItem(
+                        text = if (state.isMuted) "Unmute" else "Mute",
+                        icon = volumeIcon(state),
                         onClick = {
                             moreExpanded = false
                             actions.onToggleMute()
                         },
                     )
                     if (state.hasInfoHash) {
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = if (state.isStatsVisible) "Hide statistics" else "Show statistics",
-                                    color = Color.White,
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(Icons.Outlined.Info, contentDescription = null, tint = Color.White)
-                            },
+                        PlayerMenuItem(
+                            text = if (state.isStatsVisible) "Hide statistics" else "Show statistics",
+                            icon = Icons.Outlined.Info,
                             onClick = {
                                 moreExpanded = false
                                 actions.onToggleStats()
@@ -672,6 +718,9 @@ private fun PlayerTimeline(
     state: PlayerControlsState,
     actions: PlayerControlsActions,
     modifier: Modifier = Modifier,
+    sliderFocus: FocusRequester? = null,
+    upFocus: FocusRequester? = null,
+    downFocus: FocusRequester? = null,
 ) {
     Row(
         modifier = modifier,
@@ -707,7 +756,12 @@ private fun PlayerTimeline(
                     activeTickColor = Color.Transparent,
                     inactiveTickColor = Color.Transparent,
                 ),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (sliderFocus != null) Modifier.focusRequester(sliderFocus) else Modifier)
+                    .tvFocusVertical(up = upFocus, down = downFocus)
+                    .tvSliderFocusNavigation(up = upFocus, down = downFocus)
+                    .tvFocusIndicator(RoundedCornerShape(999.dp)),
             )
         }
 
@@ -725,7 +779,7 @@ private fun PlayerTimeline(
             fontWeight = FontWeight.Medium,
             modifier = Modifier
                 .width(44.dp)
-                .clickable { remainingTimeMode = !remainingTimeMode },
+                .tvClickable { remainingTimeMode = !remainingTimeMode },
             textAlign = TextAlign.Center,
         )
     }
@@ -738,6 +792,8 @@ private fun ModernTimeline(
     hapticsEnabled: Boolean = true,
     hapticsIntensity: String = "Medium",
     modifier: Modifier = Modifier,
+    sliderFocus: FocusRequester? = null,
+    upFocus: FocusRequester? = null,
 ) {
     val haptic = LocalHapticFeedback.current
     val duration = state.durationMs.coerceAtLeast(1L)
@@ -806,7 +862,12 @@ private fun ModernTimeline(
                         activeTickColor = Color.Transparent,
                         inactiveTickColor = Color.Transparent,
                     ),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(if (sliderFocus != null) Modifier.focusRequester(sliderFocus) else Modifier)
+                        .tvFocusVertical(up = upFocus)
+                        .tvSliderFocusNavigation(up = upFocus)
+                        .tvFocusIndicator(RoundedCornerShape(999.dp)),
                 )
             }
         }
@@ -924,20 +985,61 @@ private fun PlayerIconButton(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
+    val isTv = LocalIsTv.current
+    var focused by remember { mutableStateOf(false) }
+    val showFocus = isTv && focused
     IconButton(
         onClick = onClick,
         enabled = enabled,
         modifier = Modifier
             .size(44.dp)
-            .clip(RoundedCornerShape(12.dp)),
+            .onFocusChanged { focused = it.isFocused || it.hasFocus }
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (showFocus) Color.White else Color.Transparent)
+            .tvFocusIndicator(RoundedCornerShape(12.dp)),
     ) {
         Icon(
             imageVector = imageVector,
             contentDescription = contentDescription,
-            tint = if (enabled) Color.White else MutedText,
+            tint = when {
+                !enabled -> MutedText
+                showFocus -> Color.Black
+                else -> Color.White
+            },
             modifier = Modifier.size(22.dp),
         )
     }
+}
+
+@Composable
+private fun PlayerMenuItem(
+    text: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+) {
+    val isTv = LocalIsTv.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+    val showFocus = isTv && focused
+    val contentColor = if (showFocus) Color.Black else Color.White
+    DropdownMenuItem(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (showFocus) Color.White else Color.Transparent)
+            .tvFocusIndicator(RoundedCornerShape(8.dp), focusedScale = 1.02f),
+        text = {
+            Text(
+                text = text,
+                color = contentColor,
+                fontWeight = if (showFocus) FontWeight.Bold else FontWeight.Medium,
+            )
+        },
+        leadingIcon = {
+            Icon(icon, contentDescription = null, tint = contentColor)
+        },
+        onClick = onClick,
+        interactionSource = interactionSource,
+    )
 }
 
 @Composable
@@ -948,11 +1050,17 @@ private fun SpringGlassIconButton(
     glassEffectsMode: String,
     size: Int,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
+    var focused by remember { mutableStateOf(false) }
     val scale by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (pressed) 0.9f else 1f,
+        targetValue = when {
+            pressed -> 0.9f
+            focused -> 1.16f
+            else -> 1f
+        },
         animationSpec = spring(dampingRatio = 0.5f, stiffness = 650f),
         label = "glassIconScale",
     )
@@ -961,13 +1069,16 @@ private fun SpringGlassIconButton(
         glassEffectsMode = glassEffectsMode,
         cornerRadius = 999.dp,
         modifier = Modifier
-            .size(size.dp)
+            .size((if (focused) size + 10 else size).dp)
             .scale(scale),
     ) {
         Box(
-            modifier = Modifier
+            modifier = modifier
                 .matchParentSize()
+                .onFocusChanged { focused = it.isFocused || it.hasFocus }
                 .clip(CircleShape)
+                .background(if (focused) Color.White else Color.Transparent)
+                .tvFocusIndicator(CircleShape, focusedScale = 1f)
                 .clickable(
                     interactionSource = interactionSource,
                     indication = null,
@@ -978,7 +1089,7 @@ private fun SpringGlassIconButton(
             Icon(
                 imageVector = imageVector,
                 contentDescription = contentDescription,
-                tint = Color.White,
+                tint = if (focused) Color.Black else Color.White,
                 modifier = Modifier.size((size * 0.52f).dp),
             )
         }

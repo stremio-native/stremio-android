@@ -3,7 +3,6 @@ package com.stremio.mobile.presentation.screens
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,7 +40,11 @@ import com.stremio.mobile.core.theme.MutedText
 import com.stremio.mobile.core.theme.SearchBackground
 import com.stremio.mobile.data.model.AddonItem
 import com.stremio.mobile.presentation.components.GlassPill
+import com.stremio.mobile.presentation.components.LocalIsTv
 import com.stremio.mobile.presentation.components.ThemedButton
+import com.stremio.mobile.presentation.components.TvContentGutter
+import com.stremio.mobile.presentation.components.tvClickable
+import com.stremio.mobile.presentation.components.tvListItemSpacing
 import com.stremio.mobile.presentation.state.AddonDetailsUiState
 
 @Composable
@@ -62,8 +65,11 @@ fun AddonDetailsSheet(
             .clip(RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp))
             .background(Color(0xF2141422))
             .navigationBarsPadding()
-            .padding(horizontal = 18.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .padding(
+                horizontal = if (LocalIsTv.current) TvContentGutter else 18.dp,
+                vertical = if (LocalIsTv.current) 24.dp else 16.dp,
+            ),
+        verticalArrangement = Arrangement.spacedBy(tvListItemSpacing(14.dp)),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -75,9 +81,9 @@ fun AddonDetailsSheet(
                 tint = Color.White,
                 modifier = Modifier
                     .size(36.dp)
+                    .tvClickable(shape = CircleShape, onClick = onBack)
                     .clip(CircleShape)
                     .background(SearchBackground)
-                    .clickable(onClick = onBack)
                     .padding(8.dp),
             )
             Text(

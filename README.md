@@ -231,7 +231,7 @@ The MPV rebuild script is intended for Linux/macOS environments. stream-server n
 - MPV support is vendored source plus native outputs, not a Maven runtime dependency.
 - The app targets Android package `com.stremio.mobile`.
 - Supported native ABIs are currently `armeabi-v7a`, `arm64-v8a`, `x86`, and `x86_64`.
-- The project is optimized for phone UI. TV/D-pad behavior is not the primary target.
+- Android TV support is a work in progress, but should work: D-pad navigation rail, TV-sized content cards, visible focus states, TV launcher metadata, and remote-friendly playback controls, while preserving the phone layout.
 
 ## Useful Commands
 

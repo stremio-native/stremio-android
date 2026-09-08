@@ -14,6 +14,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
@@ -31,6 +33,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
@@ -288,6 +291,7 @@ fun LiquidGlassButton(
         Box(
             modifier = Modifier
                 .matchParentSize()
+                .tvFocusIndicator(shape)
                 .clip(shape)
                 .clickable(
                     interactionSource = interactionSource,
@@ -351,7 +355,7 @@ fun StaticGlassButton(
             .clip(shape)
             .background(legibility.surfaceTint.copy(alpha = if (enabled) (tuning.surfaceAlpha * (alpha / LIQUID_GLASS_RECOMMENDED_GLOBAL_ALPHA) * 0.72f * legibility.surfaceAlphaBoost + 0.08f).coerceIn(0.05f, 0.78f) else 0.08f))
             .border(0.7.dp, Color.White.copy(alpha = if (enabled) (tuning.borderAlpha * legibility.borderAlphaBoost).coerceIn(0f, 1f) else 0.10f), shape)
-            .clickable(enabled = enabled, onClick = onClick)
+            .tvClickable(enabled = enabled, shape = shape, onClick = onClick)
             .padding(horizontal = 28.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -389,7 +393,7 @@ fun StaticGlassIconButton(
                 else legibility.surfaceTint.copy(alpha = if (enabled) (tuning.surfaceAlpha * (alpha / LIQUID_GLASS_RECOMMENDED_GLOBAL_ALPHA) * 0.64f * legibility.surfaceAlphaBoost + 0.06f).coerceIn(0.04f, 0.74f) else 0.06f)
             )
             .border(0.7.dp, Color.White.copy(alpha = if (enabled) (tuning.borderAlpha * legibility.borderAlphaBoost * 0.75f).coerceIn(0f, 1f) else 0.08f), shape)
-            .clickable(enabled = enabled, onClick = onClick),
+            .tvClickable(enabled = enabled, shape = shape, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -414,7 +418,11 @@ fun StaticGlassChip(
     val tuning = theme.liquidGlassTuning.clamped()
     val legibility = if (theme.adaptiveGlassContrast) LocalGlassLegibility.current else GlassLegibility.Default
     val shape = RoundedCornerShape(999.dp)
-    val clickableModifier = if (onClick != null) Modifier.clickable(enabled = enabled, onClick = onClick) else Modifier
+    val clickableModifier = if (onClick != null) {
+        Modifier.tvClickable(enabled = enabled, shape = shape, onClick = onClick)
+    } else {
+        Modifier
+    }
     Box(
         modifier = modifier
             .clip(shape)
@@ -565,7 +573,19 @@ fun LiquidToggle(
     val trackColor = Color(0xFF787880).copy(alpha = (tuning.trackAlpha * 1.8f).coerceIn(0.12f, 0.48f))
 
     Box(
-        modifier = modifier,
+        modifier = modifier
+            .tvFocusIndicator(shape)
+            .then(
+                if (LocalIsTv.current) {
+                    Modifier.toggleable(
+                        value = checked,
+                        role = Role.Switch,
+                        onValueChange = onCheckedChange,
+                    )
+                } else {
+                    Modifier
+                },
+            ),
         contentAlignment = Alignment.CenterStart,
     ) {
         Box(
@@ -725,7 +745,28 @@ fun LiquidSlider(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .height(38.dp),
+            .height(38.dp)
+            .tvFocusIndicator(RoundedCornerShape(999.dp))
+            .then(
+                if (!LocalIsTv.current) {
+                    Modifier
+                } else {
+                    Modifier
+                        .focusable()
+                        .onKeyEvent { event ->
+                            if (event.nativeKeyEvent.action != android.view.KeyEvent.ACTION_DOWN) return@onKeyEvent false
+                            val step = (valueRange.endInclusive - valueRange.start) / 20f
+                            val next = when (event.nativeKeyEvent.keyCode) {
+                                android.view.KeyEvent.KEYCODE_DPAD_LEFT -> (value - step).coerceIn(valueRange)
+                                android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> (value + step).coerceIn(valueRange)
+                                else -> return@onKeyEvent false
+                            }
+                            onValueChange(next)
+                            onValueChangeFinished?.invoke()
+                            true
+                        }
+                },
+            ),
         contentAlignment = Alignment.CenterStart
     ) {
         val trackBackdrop = rememberLayerBackdrop()

@@ -1,11 +1,11 @@
 package com.stremio.mobile.presentation.screens
 
 import android.content.Context
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,15 +35,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.stremio.mobile.core.theme.AccentPurple
-import com.stremio.mobile.core.theme.GlassSurface
 import com.stremio.mobile.core.theme.MutedText
+import com.stremio.mobile.presentation.components.LocalIsTv
+import com.stremio.mobile.presentation.components.contentGutter
 import com.stremio.mobile.presentation.components.SectionTitle
 import com.stremio.mobile.presentation.components.ThemedToggle
 import com.stremio.mobile.presentation.components.ThemedSlider
@@ -51,6 +52,11 @@ import com.stremio.mobile.presentation.components.ThemedCard
 import com.stremio.mobile.presentation.components.ThemedButton
 import com.stremio.mobile.presentation.components.ThemedDropdownMenu
 import com.stremio.mobile.presentation.components.rememberGlobalHapticFeedback
+import com.stremio.mobile.presentation.components.tvClickable
+import com.stremio.mobile.presentation.components.tvContentFocus
+import com.stremio.mobile.presentation.components.tvListItemSpacing
+import com.stremio.mobile.presentation.components.tvNotFocusable
+import com.stremio.mobile.presentation.components.TvBackButton
 
 enum class SettingsSubScreen {
     Main,
@@ -64,16 +70,43 @@ enum class SettingsSubScreen {
     Info,
 }
 
+private val SettingsRowShape = RoundedCornerShape(16.dp)
+private const val SettingsRowFocusScale = 1.025f
+
+@Composable
+fun settingsContentPadding() = contentGutter()
+
+@Composable
+fun SettingsColumn(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = modifier.padding(horizontal = settingsContentPadding()),
+        verticalArrangement = Arrangement.spacedBy(tvListItemSpacing(16.dp)),
+        content = content,
+    )
+}
+
+internal fun Modifier.settingsRowClickable(
+    onClick: () -> Unit,
+    requester: FocusRequester? = null,
+): Modifier = fillMaxWidth()
+    .tvContentFocus(requester)
+    .tvClickable(
+        shape = SettingsRowShape,
+        focusedScale = SettingsRowFocusScale,
+        onClick = onClick,
+    )
+
 @Composable
 fun SettingsPanel(
     email: String?,
     onLogout: () -> Unit,
     onNavigateTo: (SettingsSubScreen) -> Unit,
+    initialFocusRequester: FocusRequester? = null,
 ) {
-    Column(
-        modifier = Modifier.padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
+    SettingsColumn {
         SectionTitle("Settings")
 
         // Account / Profile card
@@ -121,13 +154,14 @@ fun SettingsPanel(
 
         // Navigation Menu Categories
         Column(
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(tvListItemSpacing(10.dp))
         ) {
             SettingsMenuRow(
                 icon = Icons.Outlined.Extension,
                 title = "Addons",
                 description = "Manage installed and community addons",
-                onClick = { onNavigateTo(SettingsSubScreen.Addons) }
+                onClick = { onNavigateTo(SettingsSubScreen.Addons) },
+                initialFocusRequester = initialFocusRequester,
             )
             SettingsMenuRow(
                 icon = Icons.Outlined.AccountCircle,
@@ -190,20 +224,23 @@ private fun SettingsMenuRow(
     icon: ImageVector,
     title: String,
     description: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    initialFocusRequester: FocusRequester? = null,
 ) {
     val triggerHaptic = rememberGlobalHapticFeedback()
     ThemedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.settingsRowClickable(
+            onClick = {
+                triggerHaptic()
+                onClick()
+            },
+            requester = initialFocusRequester,
+        ),
         cornerRadius = 16.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable {
-                    triggerHaptic()
-                    onClick()
-                }
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -256,17 +293,26 @@ fun SettingsHeader(
             .fillMaxWidth()
             .padding(vertical = 8.dp)
     ) {
-        Icon(
-            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-            contentDescription = "Back",
-            tint = Color.White,
-            modifier = Modifier
-                .size(24.dp)
-                .clickable {
+        if (LocalIsTv.current) {
+            TvBackButton(
+                onClick = {
                     triggerHaptic()
                     onBack()
-                }
-        )
+                },
+            )
+        } else {
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                contentDescription = "Back",
+                tint = Color.White,
+                modifier = Modifier
+                    .size(24.dp)
+                    .clickable {
+                        triggerHaptic()
+                        onBack()
+                    },
+            )
+        }
         Text(
             text = title,
             color = Color.White,
@@ -284,7 +330,9 @@ fun SettingsToggleRow(
     description: String? = null
 ) {
     ThemedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.settingsRowClickable(
+            onClick = { onCheckedChange(!checked) },
+        ),
         cornerRadius = 16.dp
     ) {
         Row(
@@ -314,7 +362,8 @@ fun SettingsToggleRow(
             }
             ThemedToggle(
                 checked = checked,
-                onCheckedChange = onCheckedChange
+                onCheckedChange = onCheckedChange,
+                modifier = Modifier.tvNotFocusable(),
             )
         }
     }
@@ -333,16 +382,17 @@ fun <T> SettingsDropdownRow(
     val triggerHaptic = rememberGlobalHapticFeedback()
 
     ThemedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.settingsRowClickable(
+            onClick = {
+                triggerHaptic()
+                expanded = true
+            },
+        ),
         cornerRadius = 16.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable {
-                    triggerHaptic()
-                    expanded = true
-                }
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -460,16 +510,17 @@ fun SettingsClickRow(
 ) {
     val triggerHaptic = rememberGlobalHapticFeedback()
     ThemedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.settingsRowClickable(
+            onClick = {
+                triggerHaptic()
+                onClick()
+            },
+        ),
         cornerRadius = 16.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable {
-                    triggerHaptic()
-                    onClick()
-                }
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,

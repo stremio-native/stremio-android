@@ -2,7 +2,6 @@ package com.stremio.mobile.presentation.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -39,7 +37,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -60,7 +57,13 @@ import com.stremio.mobile.presentation.components.PosterShelf
 import com.stremio.mobile.presentation.components.PosterTile
 import com.stremio.mobile.presentation.components.ShelfMode
 import com.stremio.mobile.presentation.components.LocalGlobalUiTheme
+import com.stremio.mobile.presentation.components.LocalIsTv
 import com.stremio.mobile.presentation.components.ThemedIconButton
+import com.stremio.mobile.presentation.components.TvBackButton
+import com.stremio.mobile.presentation.components.TvOverscan
+import com.stremio.mobile.presentation.components.contentGutter
+import com.stremio.mobile.presentation.components.tvListItemSpacing
+import com.stremio.mobile.presentation.components.tvFocusIndicator
 
 /**
  * Full-screen search results, shown whenever the query is non-blank. Reuses the Discover-style
@@ -122,17 +125,20 @@ fun SearchResultsScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 11.dp, top = 6.dp, end = ScreenGutter, bottom = 6.dp),
+                .padding(start = if (LocalIsTv.current) TvOverscan else 11.dp, top = 6.dp, end = contentGutter(), bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ThemedIconButton(
-                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                contentDescription = "Back",
-                onClick = onBack,
-                modifier = Modifier
-                    .size(40.dp),
-                containerColor = GlassSurface,
-            )
+            if (LocalIsTv.current) {
+                TvBackButton(onClick = onBack)
+            } else {
+                ThemedIconButton(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "Back",
+                    onClick = onBack,
+                    modifier = Modifier.size(40.dp),
+                    containerColor = GlassSurface,
+                )
+            }
             OutlinedTextField(
                 value = localQuery,
                 onValueChange = { newValue ->
@@ -142,7 +148,8 @@ fun SearchResultsScreen(
                 modifier = Modifier
                     .weight(1f)
                     .padding(start = 12.dp)
-                    .focusRequester(focusRequester),
+                    .focusRequester(focusRequester)
+                    .tvFocusIndicator(RoundedCornerShape(18.dp)),
                 placeholder = {
                     Text(
                         text = "Search movies, series, anime…",
@@ -177,6 +184,17 @@ fun SearchResultsScreen(
         }
 
         when {
+            query.isBlank() -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "Start typing to search movies, series, and anime.",
+                        color = Color.White.copy(alpha = 0.72f),
+                        fontSize = 15.sp,
+                        modifier = Modifier.padding(horizontal = contentGutter()),
+                    )
+                }
+            }
+
             results.isLoading && results.items.isEmpty() -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = AccentPurple, modifier = Modifier.size(34.dp))
@@ -189,7 +207,7 @@ fun SearchResultsScreen(
                         text = results.error ?: "No results for \"$query\".",
                         color = MutedText,
                         fontSize = 15.sp,
-                        modifier = Modifier.padding(horizontal = ScreenGutter),
+                        modifier = Modifier.padding(horizontal = contentGutter()),
                     )
                 }
             }
@@ -200,7 +218,7 @@ fun SearchResultsScreen(
                     contentPadding = PaddingValues(
                         bottom = BottomBarSpace + navBottom,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(27.dp),
+                    verticalArrangement = Arrangement.spacedBy(tvListItemSpacing(27.dp)),
                 ) {
                     items(shelves.size) { index ->
                         val shelf = shelves[index]
