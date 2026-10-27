@@ -439,11 +439,14 @@ class StremioCore(context: Context) {
      * streams are emitted immediately as a fallback.
      */
     fun resolvePlayableUrl(option: CoreStream): Flow<String> {
+        val streamPath = option.streamRequest.path
         val selected = Player.Selected(
             stream = option.stream,
             streamRequest = option.streamRequest,
             metaRequest = option.metaRequest,
-            subtitlesPath = null,
+            // Without a subtitles path the core never asks addons (e.g. OpenSubtitles) for
+            // subtitles, so only tracks embedded in the video or bundled in the stream show up.
+            subtitlesPath = ResourcePath(resource = "subtitles", type = streamPath.type, id = streamPath.id),
         )
         return newStateFlow(Field.PLAYER)
             .map { directUrl(getPlayer().stream) }

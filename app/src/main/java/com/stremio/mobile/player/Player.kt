@@ -67,6 +67,8 @@ data class PlayerSubtitleStyle(
     val sizePercent: Int = 100,
     val offsetPercent: Int = 0,
     val delayMs: Long = 0L,
+    /** Subtitle time scale (subtitle fps / video fps); see [SubtitleRatePresets]. */
+    val rate: Double = 1.0,
     val textColor: String = "#FFFFFF",
     val backgroundColor: String = "#00000000",
     val outlineColor: String = "#000000",

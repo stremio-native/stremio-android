@@ -3,12 +3,16 @@ package com.stremio.mobile.player
 import android.content.Context
 import android.graphics.Color
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.view.View
+import android.widget.FrameLayout
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.text.Cue
 import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -18,8 +22,10 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -27,6 +33,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Locale
 
 class ExoStreamPlayer(
@@ -108,6 +117,22 @@ class ExoStreamPlayer(
     private var currentPreferredSubtitleLang: String? = null
     private var currentSubtitleStyle = PlayerSubtitleStyle()
 
+    // External SRT/VTT subtitles are rendered by our own overlay so that subtitle delay and FPS
+    // rate apply live (ExoPlayer has no timing offset for subtitle tracks).
+    private var overlayView: SubtitleView? = null
+    private var overlayCues: List<SubtitleCue> = emptyList()
+    private var overlaySubtitleId: String? = null
+    private var overlayActive = false
+    private var overlayLoadJob: Job? = null
+    private var overlayShown: List<SubtitleCue> = emptyList()
+    private val overlayHandler = Handler(Looper.getMainLooper())
+    private val overlayTick = object : Runnable {
+        override fun run() {
+            renderOverlay()
+            if (overlayActive) overlayHandler.postDelayed(this, OVERLAY_TICK_MS)
+        }
+    }
+
     private val listener = object : androidx.media3.common.Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             publishState()
@@ -123,6 +148,7 @@ class ExoStreamPlayer(
 
         override fun onTracksChanged(tracks: Tracks) {
             publishState()
+            updateExternalOverlay()
         }
 
         override fun onPlaybackParametersChanged(playbackParameters: androidx.media3.common.PlaybackParameters) {
@@ -148,7 +174,18 @@ class ExoStreamPlayer(
             resizeMode = playerView?.resizeMode ?: AspectRatioFrameLayout.RESIZE_MODE_FIT
             player = exoPlayer
             playerView = this
+            overlayView = SubtitleView(context).also { overlay ->
+                overlayFrameLayout?.addView(
+                    overlay,
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                    )
+                )
+                overlay.visibility = View.GONE
+            }
             applySubtitleStyleToView()
+            updateExternalOverlay()
         }
     }
 
@@ -224,6 +261,7 @@ class ExoStreamPlayer(
         if (parsed.type != PlayerTrackType.SUBTITLE) return
         enableTextTracks()
         selectTrack(parsed, C.TRACK_TYPE_TEXT)
+        updateExternalOverlay()
     }
 
     override fun disableSubtitles() {
@@ -235,11 +273,13 @@ class ExoStreamPlayer(
             .clearOverridesOfType(C.TRACK_TYPE_TEXT)
             .build()
         publishState()
+        updateExternalOverlay()
     }
 
     override fun setSubtitleStyle(style: PlayerSubtitleStyle) {
         currentSubtitleStyle = style
         applySubtitleStyleToView()
+        renderOverlay()
     }
 
     override fun addExternalSubtitleTracks(tracks: List<ExternalSubtitle>) {
@@ -266,6 +306,9 @@ class ExoStreamPlayer(
     }
 
     override fun release() {
+        overlayActive = false
+        overlayHandler.removeCallbacks(overlayTick)
+        overlayLoadJob?.cancel()
         scope.cancel()
         playerView?.player = null
         playerView = null
@@ -275,7 +318,7 @@ class ExoStreamPlayer(
     }
 
     private fun applySubtitleStyleToView() {
-        playerView?.subtitleView?.let { subView ->
+        listOfNotNull(playerView?.subtitleView, overlayView).forEach { subView ->
             val style = currentSubtitleStyle
             subView.setApplyEmbeddedFontSizes(false)
             subView.setApplyEmbeddedStyles(false)
@@ -303,6 +346,99 @@ class ExoStreamPlayer(
             val bottomPadding = ((style.offsetPercent / 100f) * maxPaddingPx).toInt()
             subView.setPadding(subView.paddingLeft, subView.paddingTop, subView.paddingRight, bottomPadding)
         }
+    }
+
+    private fun selectedExternalSubtitle(): ExternalSubtitle? {
+        for (group in exoPlayer.currentTracks.groups) {
+            if (group.type != C.TRACK_TYPE_TEXT) continue
+            for (index in 0 until group.length) {
+                if (!group.isTrackSelected(index)) continue
+                val format = group.getTrackFormat(index)
+                return findExternalSubtitle(format.id, group.mediaTrackGroup.id, format.label, format.language)
+            }
+        }
+        return null
+    }
+
+    /**
+     * Shows the selected external subtitle through our own overlay (so delay and FPS rate apply)
+     * and hides ExoPlayer's built-in subtitle view for it. Embedded tracks, ASS/SSA and subtitles
+     * that cannot be parsed keep using ExoPlayer's own rendering.
+     */
+    private fun updateExternalOverlay() {
+        val disabled = exoPlayer.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+        val subtitle = if (disabled) null else selectedExternalSubtitle()
+        if (subtitle == null || inferSubtitleMime(subtitle.url) == MimeTypes.TEXT_SSA) {
+            deactivateOverlay()
+            return
+        }
+        if (subtitle.id == overlaySubtitleId) return
+
+        overlayLoadJob?.cancel()
+        overlaySubtitleId = subtitle.id
+        overlayLoadJob = scope.launch {
+            val cues = withContext(Dispatchers.IO) {
+                runCatching { SubtitleCueParser.parse(SubtitleCueParser.decode(readSubtitleBytes(subtitle.url))) }
+                    .getOrNull()
+            }
+            if (overlaySubtitleId != subtitle.id) return@launch
+            if (cues.isNullOrEmpty()) {
+                // Unparseable: leave ExoPlayer's own rendering in place.
+                deactivateOverlay(keepId = true)
+                return@launch
+            }
+            overlayCues = cues
+            overlayShown = emptyList()
+            overlayActive = true
+            playerView?.subtitleView?.visibility = View.GONE
+            overlayView?.visibility = View.VISIBLE
+            overlayHandler.removeCallbacks(overlayTick)
+            overlayHandler.post(overlayTick)
+        }
+    }
+
+    private fun deactivateOverlay(keepId: Boolean = false) {
+        overlayLoadJob?.cancel()
+        overlayActive = false
+        if (!keepId) overlaySubtitleId = null
+        overlayCues = emptyList()
+        overlayShown = emptyList()
+        overlayHandler.removeCallbacks(overlayTick)
+        overlayView?.setCues(emptyList())
+        overlayView?.visibility = View.GONE
+        playerView?.subtitleView?.visibility = View.VISIBLE
+    }
+
+    private fun renderOverlay() {
+        if (!overlayActive) return
+        val style = currentSubtitleStyle
+        val active = SubtitleCueParser.activeCues(
+            overlayCues,
+            exoPlayer.currentPosition.coerceAtLeast(0L),
+            style.delayMs,
+            style.rate,
+        )
+        if (active == overlayShown) return
+        overlayShown = active
+        overlayView?.setCues(active.map { Cue.Builder().setText(it.text).build() })
+    }
+
+    private fun readSubtitleBytes(url: String): ByteArray {
+        val uri = Uri.parse(url)
+        if (uri.scheme == "http" || uri.scheme == "https") {
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.connectTimeout = 30_000
+            connection.readTimeout = 30_000
+            connection.instanceFollowRedirects = true
+            return try {
+                connection.inputStream.use { it.readNBytes(MAX_SUBTITLE_BYTES) }
+            } finally {
+                connection.disconnect()
+            }
+        }
+        val stream = appContext.contentResolver.openInputStream(uri)
+            ?: throw java.io.FileNotFoundException(url)
+        return stream.use { it.readNBytes(MAX_SUBTITLE_BYTES) }
     }
 
     private fun rebuildMediaItemPreservingPlayback() {
@@ -446,13 +582,17 @@ class ExoStreamPlayer(
         language: String?,
     ): ExternalSubtitle? {
         return currentSubtitles.firstOrNull { subtitle ->
-            subtitle.id == formatId || subtitle.id == groupId
+            // ExoPlayer prefixes media-item subtitle ids with the track-group index ("1:<id>").
+            formatId.matchesSubtitleId(subtitle.id) || groupId.matchesSubtitleId(subtitle.id)
         } ?: currentSubtitles.firstOrNull { subtitle ->
             subtitle.label != null &&
-                subtitle.label == label &&
+                (subtitle.label == label || buildExternalSubtitleLabel(subtitle) == label) &&
                 LanguageCatalog.matches(subtitle.lang, language)
         }
     }
+
+    private fun String?.matchesSubtitleId(id: String): Boolean =
+        this != null && (this == id || endsWith(":$id"))
 
     private fun buildExternalSubtitleLabel(subtitle: ExternalSubtitle): String {
         val base = subtitle.label?.takeIf { it.isNotBlank() } ?: subtitle.lang.uppercase(Locale.ROOT)
@@ -461,6 +601,9 @@ class ExoStreamPlayer(
 }
 
 /** Addon subtitle URLs rarely carry a useful Content-Type; guess from the file extension. */
+private const val OVERLAY_TICK_MS = 100L
+private const val MAX_SUBTITLE_BYTES = 5 * 1024 * 1024
+
 private fun inferSubtitleMime(url: String): String {
     val path = url.substringBefore('?').substringBefore('#')
     return when {

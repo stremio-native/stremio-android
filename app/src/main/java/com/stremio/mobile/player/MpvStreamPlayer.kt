@@ -291,6 +291,10 @@ class MpvStreamPlayer(
         MPVLib.setPropertyDouble("sub-scale", style.sizePercent / 100.0)
         MPVLib.setPropertyDouble("sub-pos", 100.0 - ((style.offsetPercent / 100.0) * 30.0))
         MPVLib.setPropertyDouble("sub-delay", style.delayMs / 1000.0)
+        // mpv multiplies subtitle timestamps by sub-speed before applying sub-delay.
+        runCatching {
+            MPVLib.setPropertyDouble("sub-speed", if (SubtitleRatePresets.isValid(style.rate)) style.rate else 1.0)
+        }
         runCatching { MPVLib.setPropertyString("sub-color", style.textColor) }
         runCatching { MPVLib.setPropertyString("sub-back-color", style.backgroundColor) }
         runCatching { MPVLib.setPropertyString("sub-border-color", style.outlineColor) }
