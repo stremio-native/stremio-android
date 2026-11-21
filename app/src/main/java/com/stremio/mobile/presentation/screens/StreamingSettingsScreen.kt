@@ -38,8 +38,10 @@ fun StreamingSettingsScreen(
     serverState: StreamingServerState,
     customServerUrl: String,
     isCustomServerEnabled: Boolean,
+    usesRemoteServer: Boolean,
+    onRetryServer: () -> Unit,
     onSetCustomServer: (enabled: Boolean, url: String) -> Boolean,
-    serverSettings: com.stremio.core.models.StreamingServer.Settings?,
+    serverSettings:com.stremio.core.models.StreamingServer.Settings?,
     isSeedingEnabled: Boolean,
     minSeedsThreshold: Int,
     minDownloadSpeedBps: Long,
@@ -115,6 +117,10 @@ fun StreamingSettingsScreen(
                         fontSize = 12.sp,
                     )
                 }
+
+                if (usesRemoteServer && serverState is StreamingServerState.Failed) {
+                    ThemedButton(text = "Retry", onClick = onRetryServer)
+                }
             }
         }
 
@@ -124,8 +130,8 @@ fun StreamingSettingsScreen(
             onSetCustomServer = onSetCustomServer,
         )
 
-        if (isCustomServerEnabled) {
-            // These options target the on-device server; the desktop server has its own (e.g. transcode profiles are HW ids there).
+        if (usesRemoteServer) {
+            // Transcode profiles etc. differ on the desktop server (HW profile ids there).
             Text(
                 text = "Server options of a custom server are changed on that device, e.g. in Stremio on your PC.",
                 color = MutedText,

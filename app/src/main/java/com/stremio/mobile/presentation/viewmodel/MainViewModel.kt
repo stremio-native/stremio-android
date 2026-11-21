@@ -237,6 +237,10 @@ class MainViewModel(
             serverVersion = if (isRemoteServer) loadedServerSettings?.serverVersion.orEmpty() else "0.1.8",
             serverConfigPath = if (isRemoteServer) "" else configPath,
             serverCachePath = if (isRemoteServer) loadedServerSettings?.cacheRoot.orEmpty() else cachePath,
+            usesRemoteStreamingServer = isRemoteServer,
+            // Plain preference reads: changing them restarts the app unless the server in use stays the same.
+            customStreamingServerUrl = authRepository.getCustomStreamingServerUrl().orEmpty(),
+            isCustomStreamingServerEnabled = authRepository.isCustomStreamingServerEnabled(),
             latestIntentUri = values[3] as String?,
             account = values[4] as AccountUiState,
             selectedSection = values[5] as MainSection,
@@ -605,8 +609,6 @@ class MainViewModel(
     /** Base URL of the streaming server in use: the on-device one or the custom remote one. */
     val streamingServerUrl: String get() = core.streamingServerUrl
 
-    fun getCustomStreamingServerUrl(): String = authRepository.getCustomStreamingServerUrl().orEmpty()
-    fun isCustomStreamingServerEnabled(): Boolean = authRepository.isCustomStreamingServerEnabled()
 
     /**
      * Saves the remote server option and restarts the app if the server in use changes.
@@ -1493,8 +1495,7 @@ class MainViewModel(
         noSeedsPollJob = viewModelScope.launch {
             while (true) {
                 playbackRepository.requestStreamStatistics(infoHash, fileIndex)
-                // HTTP roundtrip to the streaming server, well under this for the on-device one. A slower remote reply means
-                // this cycle reads the previous poll's statistics, which is fine.
+                // Roundtrip to the streaming server; a slower remote reply is read on the next cycle.
                 delay(800)
                 val stats = playbackRepository.getStreamStatistics()
                 if (stats != null && stats.infoHash == infoHash) {
@@ -1684,6 +1685,9 @@ class MainViewModel(
         viewModelScope.launch {
             isPingLoading.value = true
             serverPingStatus.value = "Checking..."
+            if (core.usesRemoteStreamingServer) {
+                serverController.start() // Re-probes an unreachable remote server, so this check doubles as a retry.
+            }
             val currentState = serverController.state.value
             if (currentState is StreamingServerState.Ready) {
                 val url = "${currentState.baseUrl}/heartbeat"

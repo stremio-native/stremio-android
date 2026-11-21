@@ -142,8 +142,6 @@ fun StremioMobileApp(viewModel: MainViewModel) {
                     onInstallTraktAddon = viewModel::installTraktAddon,
                     onSetAutoStartOnBoot = viewModel::setAutoStartOnBoot,
                     onSetServerInForeground = viewModel::setServerInForeground,
-                    customStreamingServerUrl = remember { viewModel.getCustomStreamingServerUrl() },
-                    isCustomStreamingServerEnabled = remember { viewModel.isCustomStreamingServerEnabled() },
                     onSetCustomStreamingServer = viewModel::setCustomStreamingServer,
                     onSetMobileDataWarning = viewModel::setMobileDataWarning,
                     onSetKeepScreenOn = viewModel::setKeepScreenOn,
@@ -351,7 +349,8 @@ fun StremioMobileApp(viewModel: MainViewModel) {
                 )
             }
 
-            if (state.server is StreamingServerState.Failed) {
+            // An unreachable remote server is normal (PC asleep, off the LAN), so it is shown in settings, not as a fatal dialog.
+            if (state.server is StreamingServerState.Failed && !state.usesRemoteStreamingServer) {
                 val context = LocalContext.current
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = {
@@ -674,8 +673,6 @@ private fun BoardScreen(
     onInstallTraktAddon: () -> Unit,
     onSetAutoStartOnBoot: (Boolean) -> Unit,
     onSetServerInForeground: (Boolean) -> Unit,
-    customStreamingServerUrl: String,
-    isCustomStreamingServerEnabled: Boolean,
     onSetCustomStreamingServer: (enabled: Boolean, url: String) -> Boolean,
     onSetMobileDataWarning: (Boolean) -> Unit,
     onSetKeepScreenOn: (Boolean) -> Unit,
@@ -1039,8 +1036,10 @@ private fun BoardScreen(
                             item {
                                 StreamingSettingsScreen(
                                     serverState = state.server,
-                                    customServerUrl = customStreamingServerUrl,
-                                    isCustomServerEnabled = isCustomStreamingServerEnabled,
+                                    customServerUrl = state.customStreamingServerUrl,
+                                    isCustomServerEnabled = state.isCustomStreamingServerEnabled,
+                                    usesRemoteServer = state.usesRemoteStreamingServer,
+                                    onRetryServer = onCheckServer,
                                     onSetCustomServer = onSetCustomStreamingServer,
                                     serverSettings = state.serverSettings,
                                     isSeedingEnabled = state.isSeedingEnabled,

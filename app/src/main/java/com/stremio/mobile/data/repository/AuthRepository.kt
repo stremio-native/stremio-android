@@ -20,6 +20,9 @@ class AuthRepository(
 ) {
     private val preferences = context.getSharedPreferences("stremio_account", Context.MODE_PRIVATE)
 
+    // Device-level, kept apart from "stremio_account", which logout clears.
+    private val serverPreferences = context.getSharedPreferences("streaming_server", Context.MODE_PRIVATE)
+
     fun getSelectedFont(): AppFont {
         val name = preferences.getString("selected_font", AppFont.PLUS_JAKARTA_SANS.name) ?: AppFont.PLUS_JAKARTA_SANS.name
         return runCatching { AppFont.valueOf(name) }.getOrDefault(AppFont.PLUS_JAKARTA_SANS)
@@ -79,10 +82,10 @@ class AuthRepository(
     }
 
     /** Base URL of a remote streaming server to use instead of the on-device one; kept while the option is off. */
-    fun getCustomStreamingServerUrl(): String? = preferences.getString("custom_streaming_server_url", null)
-    fun isCustomStreamingServerEnabled(): Boolean = preferences.getBoolean("custom_streaming_server_enabled", false)
+    fun getCustomStreamingServerUrl(): String? = serverPreferences.getString("custom_streaming_server_url", null)
+    fun isCustomStreamingServerEnabled(): Boolean = serverPreferences.getBoolean("custom_streaming_server_enabled", false)
     fun setCustomStreamingServer(enabled: Boolean, url: String?) {
-        preferences.edit()
+        serverPreferences.edit()
             .putBoolean("custom_streaming_server_enabled", enabled)
             .putString("custom_streaming_server_url", url)
             .commit()

@@ -78,11 +78,13 @@ class StremioCore(context: Context) {
         private set
 
     /** Whether a remote server is used instead of the on-device one. */
-    val usesRemoteStreamingServer: Boolean get() = streamingServerUrl != DEFAULT_STREAMING_SERVER_URL
+    var usesRemoteStreamingServer: Boolean = false
+        private set
 
     /** Uses the remote server at [baseUrl] instead of the on-device one; set once at startup. */
     fun useStreamingServer(baseUrl: String) {
         streamingServerUrl = baseUrl
+        usesRemoteStreamingServer = true
     }
 
     fun initialize() {

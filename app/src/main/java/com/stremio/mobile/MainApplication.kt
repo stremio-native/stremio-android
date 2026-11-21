@@ -24,17 +24,31 @@ class CrashlyticsTree : Timber.Tree() {
     private val passwordRegex = Regex("(?i)(password|token|apiKey|api_key|secret|auth|bearer|pass)\\s*[:=]\\s*[^&\\s]+")
     private val bearerRegex = Regex("(?i)Bearer\\s+[^&\\s]+")
 
-    /** Host of the user's own remote streaming server (LAN/Tailscale address), kept out of crash reports. */
     @Volatile
-    var redactedHost: String? = null
+    private var hostRegex: Regex? = null
+
+    /** Keeps [host] - the user's own remote streaming server (LAN/Tailscale address) - out of crash reports. */
+    fun redactHost(host: String) {
+        val escaped = Regex.escape(host.removeSurrounding("[", "]"))
+        // Whole host only: "pc" must not match inside "pcm", but may end a sentence ("... pc.").
+        hostRegex = Regex("""(?<![\w.-])$escaped(?![\w-]|\.\w)""", RegexOption.IGNORE_CASE)
+    }
 
     private fun sanitize(message: String): String {
         var sanitized = message
         sanitized = emailRegex.replace(sanitized, "[EMAIL_REDACTED]")
         sanitized = passwordRegex.replace(sanitized, "$1=[REDACTED]")
         sanitized = bearerRegex.replace(sanitized, "Bearer [REDACTED]")
-        redactedHost?.let { sanitized = sanitized.replace(it, "[HOST_REDACTED]", ignoreCase = true) }
+        hostRegex?.let { sanitized = it.replace(sanitized, "[HOST_REDACTED]") }
         return sanitized
+    }
+
+    /** Sanitizes the message of [t] and of its causes, re-wrapping only the throwables whose message changed. */
+    private fun sanitizeThrowable(t: Throwable): Throwable {
+        val cause = t.cause?.takeIf { it !== t }?.let(::sanitizeThrowable)
+        val message = t.message?.let(::sanitize)
+        if (message == t.message && cause === t.cause) return t
+        return Throwable(message, cause).also { it.stackTrace = t.stackTrace }
     }
 
     override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
@@ -45,15 +59,7 @@ class CrashlyticsTree : Timber.Tree() {
         val sanitizedMessage = sanitize((tag?.let { "[$it] " } ?: "") + message)
         crashlytics.log(sanitizedMessage)
         if (t != null) {
-            val sanitizedThrowable = if (t.message != null) {
-                val sanitizedMsg = sanitize(t.message!!)
-                if (sanitizedMsg != t.message) {
-                    val wrapped = Throwable(sanitizedMsg, t.cause)
-                    wrapped.stackTrace = t.stackTrace
-                    wrapped
-                } else t
-            } else t
-            crashlytics.recordException(sanitizedThrowable)
+            crashlytics.recordException(sanitizeThrowable(t))
         }
     }
 }
@@ -73,7 +79,7 @@ class MainApplication : Application(), SingletonImageLoader.Factory {
             Timber.e(e, "Failed to set TMPDIR environment variable")
         }
         container = AppContainer(this)
-        crashlyticsTree.redactedHost = container.customServerUrl?.let { java.net.URI(it).host }
+        container.customServerUrl?.let { crashlyticsTree.redactHost(java.net.URI(it).host) }
         val analyticsEnabled = container.authRepository.isAnalyticsEnabled()
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(analyticsEnabled)
 

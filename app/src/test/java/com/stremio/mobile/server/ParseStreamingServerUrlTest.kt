@@ -51,6 +51,14 @@ class ParseStreamingServerUrlTest {
     }
 
     @Test
+    fun `rejects forms stremio-core reads differently`() {
+        assertNull(parseStreamingServerUrl("http://192.168.001.010:11470"))
+        assertNull(parseStreamingServerUrl("http://[fe80::1%wlan0]:11470"))
+        assertNull(parseStreamingServerUrl("http://pc:11470/../x"))
+        assertEquals("http://pc.01net.com:11470", parseStreamingServerUrl("http://pc.01net.com:11470"))
+    }
+
+    @Test
     fun `rejects query, fragment and user info`() {
         assertNull(parseStreamingServerUrl("http://pc:11470/?x=1"))
         assertNull(parseStreamingServerUrl("http://pc:11470/#/"))
