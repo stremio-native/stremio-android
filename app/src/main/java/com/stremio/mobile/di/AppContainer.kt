@@ -38,7 +38,7 @@ class AppContainer(context: Context) {
     val serverController: StreamingServerController = createServerController(context)
 
     private fun createServerController(context: Context): StreamingServerController {
-        val customUrl = authRepository.getCustomStreamingServerUrl()
+        val customUrl = authRepository.getActiveCustomStreamingServerUrl()
         if (customUrl != null) {
             core.streamingServerUrl = customUrl
             return RemoteStreamingServerController(customUrl)

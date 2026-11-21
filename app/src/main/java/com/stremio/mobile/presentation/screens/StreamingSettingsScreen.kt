@@ -34,6 +34,7 @@ import com.stremio.mobile.core.theme.GlassSurface
 import com.stremio.mobile.core.theme.MutedText
 import com.stremio.mobile.presentation.components.ThemedButton
 import com.stremio.mobile.presentation.components.ThemedCard
+import com.stremio.mobile.presentation.components.ThemedToggle
 import com.stremio.mobile.server.StreamingServerState
 import com.stremio.mobile.server.formatServerErrorMessage
 
@@ -41,7 +42,8 @@ import com.stremio.mobile.server.formatServerErrorMessage
 fun StreamingSettingsScreen(
     serverState: StreamingServerState,
     customServerUrl: String,
-    onSetCustomServerUrl: (String) -> Boolean,
+    isCustomServerEnabled: Boolean,
+    onSetCustomServer: (enabled: Boolean, url: String) -> Boolean,
     serverSettings:com.stremio.core.models.StreamingServer.Settings?,
     isSeedingEnabled: Boolean,
     minSeedsThreshold: Int,
@@ -121,7 +123,11 @@ fun StreamingSettingsScreen(
             }
         }
 
-        CustomServerUrlCard(customServerUrl = customServerUrl, onSetCustomServerUrl = onSetCustomServerUrl)
+        CustomServerCard(
+            customServerUrl = customServerUrl,
+            isCustomServerEnabled = isCustomServerEnabled,
+            onSetCustomServer = onSetCustomServer,
+        )
 
         if (serverSettings != null) {
             Text(
@@ -251,8 +257,13 @@ fun StreamingSettingsScreen(
 }
 
 @Composable
-private fun CustomServerUrlCard(customServerUrl: String, onSetCustomServerUrl: (String) -> Boolean) {
+private fun CustomServerCard(
+    customServerUrl: String,
+    isCustomServerEnabled: Boolean,
+    onSetCustomServer: (enabled: Boolean, url: String) -> Boolean,
+) {
     var urlInput by rememberSaveable(customServerUrl) { mutableStateOf(customServerUrl) }
+    var enabled by rememberSaveable(isCustomServerEnabled) { mutableStateOf(isCustomServerEnabled) }
     var urlError by remember { mutableStateOf(false) }
 
     ThemedCard(
@@ -265,15 +276,29 @@ private fun CustomServerUrlCard(customServerUrl: String, onSetCustomServerUrl: (
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            Row(
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text = "Use Custom Server",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                ThemedToggle(
+                    checked = enabled,
+                    onCheckedChange = { checked ->
+                        urlError = !onSetCustomServer(checked, urlInput)
+                        if (!urlError) enabled = checked
+                    },
+                )
+            }
             Text(
-                text = "Custom Server URL",
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = "Stream through a server on another device, e.g. Stremio on your PC. " +
-                    "Leave empty to use the built-in server. Saving restarts the app.",
+                text = "Stream through a server on another device, e.g. Stremio on your PC, instead of the built-in one. " +
+                    "Switching servers restarts the app.",
                 color = MutedText,
                 fontSize = 12.sp,
             )
@@ -302,7 +327,7 @@ private fun CustomServerUrlCard(customServerUrl: String, onSetCustomServerUrl: (
                 )
                 ThemedButton(
                     text = "Save",
-                    onClick = { urlError = !onSetCustomServerUrl(urlInput) },
+                    onClick = { urlError = !onSetCustomServer(enabled, urlInput) },
                     containerColor = AccentPurple,
                 )
             }

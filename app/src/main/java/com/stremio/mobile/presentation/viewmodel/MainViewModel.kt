@@ -599,12 +599,19 @@ class MainViewModel(
     val streamingServerUrl: String get() = core.streamingServerUrl
 
     fun getCustomStreamingServerUrl(): String = authRepository.getCustomStreamingServerUrl().orEmpty()
+    fun isCustomStreamingServerEnabled(): Boolean = authRepository.isCustomStreamingServerEnabled()
 
-    /** Saves the remote server URL (blank = use the on-device server) and restarts the app; false if the URL is invalid. */
-    fun setCustomStreamingServerUrl(input: String): Boolean {
-        val url = if (input.isBlank()) null else parseStreamingServerUrl(input) ?: return false
-        if (url != authRepository.getCustomStreamingServerUrl()) {
-            authRepository.setCustomStreamingServerUrl(url)
+    /**
+     * Saves the remote server option and restarts the app if the server in use changes.
+     * Returns false, saving nothing, if [urlInput] is invalid, or blank while [enabled].
+     */
+    fun setCustomStreamingServer(enabled: Boolean, urlInput: String): Boolean {
+        val url = if (urlInput.isBlank()) null else parseStreamingServerUrl(urlInput) ?: return false
+        if (enabled && url == null) return false
+
+        val activeBefore = authRepository.getActiveCustomStreamingServerUrl()
+        authRepository.setCustomStreamingServer(enabled, url)
+        if (authRepository.getActiveCustomStreamingServerUrl() != activeBefore) {
             restartApp()
         }
         return true
