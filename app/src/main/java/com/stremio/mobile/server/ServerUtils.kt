@@ -39,7 +39,7 @@ suspend fun isStreamingServerReachable(
  * no trailing slash, no query/fragment/user info. Canonical, because stremio-core re-parses the URL and stores it normalized.
  */
 fun parseStreamingServerUrl(input: String): String? {
-    val uri = runCatching { URI(input.trim()) }.getOrNull() ?: return null
+    val uri = runCatching { URI(input.trim()).normalize() }.getOrNull() ?: return null
     val scheme = uri.scheme?.lowercase()
     val host = uri.host?.lowercase()
     if (scheme != "http" && scheme != "https" || host.isNullOrEmpty()) return null

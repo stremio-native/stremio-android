@@ -64,11 +64,7 @@ fun UrlInputRow(
                     unfocusedTextColor = Color.White,
                 ),
             )
-            ThemedButton(
-                text = buttonText,
-                onClick = onSubmit,
-                containerColor = AccentPurple,
-            )
+            ThemedButton(text = buttonText, onClick = onSubmit)
         }
         if (errorText != null) {
             Text(

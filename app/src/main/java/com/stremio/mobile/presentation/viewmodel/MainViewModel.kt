@@ -46,7 +46,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -222,6 +221,8 @@ class MainViewModel(
             playerUiStyle,
         )
     ) { values ->
+        val loadedServerSettings = values[21] as com.stremio.core.models.StreamingServer.Settings?
+        val isRemoteServer = core.usesRemoteStreamingServer
         MainUiState(
             server = values[0] as StreamingServerState,
             selectedFont = values[45] as AppFont,
@@ -232,9 +233,10 @@ class MainViewModel(
             isAutoUpdateEnabled = values[50] as Boolean,
             serverPingStatus = values[1] as String,
             isPingLoading = values[2] as Boolean,
-            serverVersion = "0.1.8",
-            serverConfigPath = configPath,
-            serverCachePath = cachePath,
+            // A remote server reports its own version and cache; the on-device config path doesn't apply to it.
+            serverVersion = if (isRemoteServer) loadedServerSettings?.serverVersion.orEmpty() else "0.1.8",
+            serverConfigPath = if (isRemoteServer) "" else configPath,
+            serverCachePath = if (isRemoteServer) loadedServerSettings?.cacheRoot.orEmpty() else cachePath,
             latestIntentUri = values[3] as String?,
             account = values[4] as AccountUiState,
             selectedSection = values[5] as MainSection,
@@ -253,7 +255,7 @@ class MainViewModel(
             libraryWithFilters = values[17] as com.stremio.core.models.LibraryWithFilters?,
             isDiscoverSeeAll = values[18] as Boolean,
             profileSettings = values[20] as com.stremio.core.types.profile.Profile.Settings?,
-            serverSettings = values[21] as com.stremio.core.models.StreamingServer.Settings?,
+            serverSettings = loadedServerSettings,
             isAutoStartOnBoot = values[22] as Boolean,
             isServerInForeground = values[23] as Boolean,
             isMobileDataWarning = values[24] as Boolean,
@@ -328,12 +330,8 @@ class MainViewModel(
         viewModelScope.launch {
             authRepository.getProfileSettingsFlow().collect { settings ->
                 profileSettings.value = settings
+                core.syncProfileStreamingServerUrl(settings)
             }
-        }
-        viewModelScope.launch {
-            authRepository.getProfileSettingsFlow()
-                .distinctUntilChangedBy { it.streamingServerUrl }
-                .collect { core.syncProfileStreamingServerUrl(it) }
         }
         viewModelScope.launch {
             authRepository.getTraktAuthFlow().collect { traktAuth ->
@@ -445,7 +443,10 @@ class MainViewModel(
                     )
                     serverSettings.value = newSettings
                     isSeedingEnabled.value = settingsObj.optBoolean("seedingEnabled", true)
-                    core.updateStreamingServerSettings(newSettings)
+                    // Core POSTs these back to the server; don't write to a remote server the user manages elsewhere.
+                    if (!core.usesRemoteStreamingServer) {
+                        core.updateStreamingServerSettings(newSettings)
+                    }
                 }
             }
         }
@@ -1492,7 +1493,8 @@ class MainViewModel(
         noSeedsPollJob = viewModelScope.launch {
             while (true) {
                 playbackRepository.requestStreamStatistics(infoHash, fileIndex)
-                // HTTP roundtrip to the streaming server; well under this for the on-device one, may exceed it for a remote one.
+                // HTTP roundtrip to the streaming server, well under this for the on-device one. A slower remote reply means
+                // this cycle reads the previous poll's statistics, which is fine.
                 delay(800)
                 val stats = playbackRepository.getStreamStatistics()
                 if (stats != null && stats.infoHash == infoHash) {

@@ -37,10 +37,15 @@ class AppContainer(context: Context) {
     val updateRepository = UpdateRepository(context.applicationContext)
     val apkInstaller = ApkInstaller(context.applicationContext)
 
-    private val customServerUrl = authRepository.getActiveCustomStreamingServerUrl()?.also { url ->
-        core.streamingServerUrl = url
-        // In case the on-device server's sticky service outlived a previous process.
-        context.stopService(Intent(context, ServerService::class.java))
+    /** Base URL of the remote streaming server in use, or null when the on-device server is used. */
+    val customServerUrl = authRepository.getActiveCustomStreamingServerUrl()
+
+    init {
+        if (customServerUrl != null) {
+            core.useStreamingServer(customServerUrl)
+            // In case the on-device server's sticky service outlived a previous process.
+            context.stopService(Intent(context, ServerService::class.java))
+        }
     }
 
     val serverController: StreamingServerController =

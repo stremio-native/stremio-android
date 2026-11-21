@@ -15,7 +15,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -125,7 +124,15 @@ fun StreamingSettingsScreen(
             onSetCustomServer = onSetCustomServer,
         )
 
-        if (serverSettings != null) {
+        if (isCustomServerEnabled) {
+            // These options target the on-device server; the desktop server has its own (e.g. transcode profiles are HW ids there).
+            Text(
+                text = "Server options of a custom server are changed on that device, e.g. in Stremio on your PC.",
+                color = MutedText,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(start = 4.dp),
+            )
+        } else if (serverSettings != null) {
             Text(
                 text = "SERVER OPTIONS",
                 color = MutedText,
@@ -260,7 +267,7 @@ private fun CustomServerCard(
 ) {
     var urlInput by rememberSaveable { mutableStateOf(customServerUrl) }
     var enabled by rememberSaveable { mutableStateOf(isCustomServerEnabled) }
-    var urlError by remember { mutableStateOf(false) }
+    var urlError by rememberSaveable { mutableStateOf(false) }
 
     SettingsToggleRow(
         title = "Use Custom Server",

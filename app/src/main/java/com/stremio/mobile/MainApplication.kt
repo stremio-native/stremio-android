@@ -24,11 +24,16 @@ class CrashlyticsTree : Timber.Tree() {
     private val passwordRegex = Regex("(?i)(password|token|apiKey|api_key|secret|auth|bearer|pass)\\s*[:=]\\s*[^&\\s]+")
     private val bearerRegex = Regex("(?i)Bearer\\s+[^&\\s]+")
 
+    /** Host of the user's own remote streaming server (LAN/Tailscale address), kept out of crash reports. */
+    @Volatile
+    var redactedHost: String? = null
+
     private fun sanitize(message: String): String {
         var sanitized = message
         sanitized = emailRegex.replace(sanitized, "[EMAIL_REDACTED]")
         sanitized = passwordRegex.replace(sanitized, "$1=[REDACTED]")
         sanitized = bearerRegex.replace(sanitized, "Bearer [REDACTED]")
+        redactedHost?.let { sanitized = sanitized.replace(it, "[HOST_REDACTED]", ignoreCase = true) }
         return sanitized
     }
 
@@ -60,13 +65,15 @@ class MainApplication : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
         Timber.plant(Timber.DebugTree())
-        Timber.plant(CrashlyticsTree())
+        val crashlyticsTree = CrashlyticsTree()
+        Timber.plant(crashlyticsTree)
         try {
             android.system.Os.setenv("TMPDIR", cacheDir.absolutePath, true)
         } catch (e: Exception) {
             Timber.e(e, "Failed to set TMPDIR environment variable")
         }
         container = AppContainer(this)
+        crashlyticsTree.redactedHost = container.customServerUrl?.let { java.net.URI(it).host }
         val analyticsEnabled = container.authRepository.isAnalyticsEnabled()
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(analyticsEnabled)
 

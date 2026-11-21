@@ -1,5 +1,6 @@
 package com.stremio.mobile.server
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -19,16 +20,17 @@ class RemoteStreamingServerController(private val baseUrl: String) : StreamingSe
             if (isReady && System.currentTimeMillis() - lastReachableMs < RECHECK_INTERVAL_MS) {
                 return
             }
+            val previousState = mutableState.value
             if (!isReady) {
                 mutableState.value = StreamingServerState.Starting
             }
 
-            val reachable = isStreamingServerReachable(
-                baseUrl,
-                connectTimeoutMs = 1_500,
-                readTimeoutMs = 3_000,
-                acceptedCodes = 200..200,
-            )
+            val reachable = try {
+                isStreamingServerReachable(baseUrl, connectTimeoutMs = 1_500, readTimeoutMs = 3_000, acceptedCodes = 200..200)
+            } catch (e: CancellationException) {
+                mutableState.value = previousState
+                throw e
+            }
             mutableState.value = if (reachable) {
                 lastReachableMs = System.currentTimeMillis()
                 StreamingServerState.Ready(baseUrl)

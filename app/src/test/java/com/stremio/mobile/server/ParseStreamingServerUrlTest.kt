@@ -29,6 +29,12 @@ class ParseStreamingServerUrlTest {
     }
 
     @Test
+    fun `removes dot segments`() {
+        assertEquals("http://pc:11470/b", parseStreamingServerUrl("http://pc:11470/a/../b"))
+        assertEquals("http://pc:11470", parseStreamingServerUrl("http://pc:11470/./"))
+    }
+
+    @Test
     fun `rejects blank and non-http input`() {
         assertNull(parseStreamingServerUrl(""))
         assertNull(parseStreamingServerUrl("   "))
