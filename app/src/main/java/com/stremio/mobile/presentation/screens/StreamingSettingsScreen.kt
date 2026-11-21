@@ -41,7 +41,7 @@ fun StreamingSettingsScreen(
     usesRemoteServer: Boolean,
     onRetryServer: () -> Unit,
     onSetCustomServer: (enabled: Boolean, url: String) -> Boolean,
-    serverSettings:com.stremio.core.models.StreamingServer.Settings?,
+    serverSettings: com.stremio.core.models.StreamingServer.Settings?,
     isSeedingEnabled: Boolean,
     minSeedsThreshold: Int,
     minDownloadSpeedBps: Long,
@@ -131,7 +131,6 @@ fun StreamingSettingsScreen(
         )
 
         if (usesRemoteServer) {
-            // Transcode profiles etc. differ on the desktop server (HW profile ids there).
             Text(
                 text = "Server options of a custom server are changed on that device, e.g. in Stremio on your PC.",
                 color = MutedText,
@@ -279,7 +278,7 @@ private fun CustomServerCard(
         title = "Use Custom Server",
         checked = enabled,
         onCheckedChange = { checked ->
-            // Turning off keeps the saved URL rather than saving unsaved edits from the field.
+            // Turning off doesn't save edits in the field.
             urlError = !onSetCustomServer(checked, if (checked) urlInput else customServerUrl)
             if (!urlError) enabled = checked
         },

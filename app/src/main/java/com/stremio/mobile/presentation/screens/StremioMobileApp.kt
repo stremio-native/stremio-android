@@ -349,7 +349,7 @@ fun StremioMobileApp(viewModel: MainViewModel) {
                 )
             }
 
-            // An unreachable remote server is normal (PC asleep, off the LAN), so it is shown in settings, not as a fatal dialog.
+            // A remote server being offline (PC asleep) isn't fatal; settings show it.
             if (state.server is StreamingServerState.Failed && !state.usesRemoteStreamingServer) {
                 val context = LocalContext.current
                 androidx.compose.material3.AlertDialog(

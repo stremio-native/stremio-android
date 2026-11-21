@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** Uses a streaming server running elsewhere (e.g. Stremio on a desktop) instead of starting the on-device one. */
+/** A streaming server on another device, e.g. Stremio on a PC. */
 class RemoteStreamingServerController(
     private val baseUrl: String,
     private val probe: suspend (baseUrl: String) -> Boolean = ::probeRemoteServer,
@@ -18,7 +18,7 @@ class RemoteStreamingServerController(
     private var lastReachableMs = 0L
     override val state: StateFlow<StreamingServerState> = mutableState
 
-    // Called before every stream list load and server-backed playback, so a recent successful probe is reused.
+    // Runs before every stream list load, so a recent success is reused.
     override suspend fun start() {
         startMutex.withLock {
             val previousState = mutableState.value
@@ -31,7 +31,7 @@ class RemoteStreamingServerController(
             }
 
             val reachable = try {
-                // A server that was up gets a second try: the first request after idle may hit Wi-Fi power save or a Tailscale re-handshake.
+                // Retry if it was up: the first request after idle may hit Wi-Fi power save.
                 probe(baseUrl) || wasReady && run { delay(RETRY_DELAY_MS); probe(baseUrl) }
             } catch (e: CancellationException) {
                 mutableState.value = previousState
@@ -41,7 +41,7 @@ class RemoteStreamingServerController(
                 lastReachableMs = clock()
                 StreamingServerState.Ready(baseUrl)
             } else {
-                // No URL in the message: formatServerErrorMessage treats any "11470" as a local port conflict.
+                // No URL: formatServerErrorMessage reads "11470" as a port conflict.
                 StreamingServerState.Failed("Remote streaming server is not reachable")
             }
         }
@@ -57,6 +57,6 @@ class RemoteStreamingServerController(
     }
 }
 
-/** The remote server must answer `/settings` properly; any HTTP reply would also match e.g. a router page. */
+/** 2xx only: any HTTP reply would also match e.g. a router page. */
 private suspend fun probeRemoteServer(baseUrl: String): Boolean =
     isStreamingServerReachable(baseUrl, connectTimeoutMs = 1_500, readTimeoutMs = 3_000, acceptedCodes = 200..299)

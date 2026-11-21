@@ -36,19 +36,17 @@ suspend fun isStreamingServerReachable(
 
 private val leadingZeroOctet = Regex("""(^|\.)0\d""")
 
-/**
- * Returns [input] as a canonical http(s) base URL, or null if it isn't one: lowercase scheme and host, no default port,
- * no trailing slash, no query/fragment/user info. Canonical, because stremio-core re-parses the URL and stores it normalized.
- */
+/** [input] as an http(s) base URL in the form stremio-core stores it, or null if invalid. */
 fun parseStreamingServerUrl(input: String): String? {
     val uri = runCatching { URI(input.trim()).normalize() }.getOrNull() ?: return null
     val scheme = uri.scheme?.lowercase()
     val host = uri.host?.lowercase()
     if (scheme != "http" && scheme != "https" || host.isNullOrEmpty()) return null
     if (uri.rawQuery != null || uri.rawFragment != null || uri.rawUserInfo != null) return null
-    // Forms that stremio-core's URL parser reads differently: octal IPv4 octets, IPv6 zone ids, a leading "..".
+    // Forms stremio-core parses differently: octal IPv4, IPv6 zone ids, ".." segments.
     val isIpv4 = host.all { it.isDigit() || it == '.' }
-    if (isIpv4 && leadingZeroOctet.containsMatchIn(host) || '%' in host || uri.rawPath.orEmpty().startsWith("/..")) return null
+    val path = uri.rawPath.orEmpty()
+    if (isIpv4 && leadingZeroOctet.containsMatchIn(host) || '%' in host || path.startsWith("/..") || path.contains("%2e", true)) return null
 
     val port = uri.port
     if (port == 0 || port > 65535) return null

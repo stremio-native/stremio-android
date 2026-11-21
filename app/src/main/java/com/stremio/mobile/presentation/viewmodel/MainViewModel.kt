@@ -101,6 +101,8 @@ class MainViewModel(
     private val serverSettings = MutableStateFlow<com.stremio.core.models.StreamingServer.Settings?>(null)
     private val isAutoStartOnBoot = MutableStateFlow(authRepository.isAutoStartOnBoot())
     private val isServerInForeground = MutableStateFlow(authRepository.isServerInForeground())
+    private val customStreamingServerUrl = MutableStateFlow(authRepository.getCustomStreamingServerUrl().orEmpty())
+    private val isCustomStreamingServerEnabled = MutableStateFlow(authRepository.isCustomStreamingServerEnabled())
     private val isMobileDataWarning = MutableStateFlow(authRepository.isMobileDataWarning())
     private val isKeepScreenOn = MutableStateFlow(authRepository.isKeepScreenOn())
     private val isAnalyticsEnabled = MutableStateFlow(authRepository.isAnalyticsEnabled())
@@ -219,6 +221,8 @@ class MainViewModel(
             _updateState,
             isAutoUpdateEnabled,
             playerUiStyle,
+            customStreamingServerUrl,
+            isCustomStreamingServerEnabled,
         )
     ) { values ->
         val loadedServerSettings = values[21] as com.stremio.core.models.StreamingServer.Settings?
@@ -233,14 +237,12 @@ class MainViewModel(
             isAutoUpdateEnabled = values[50] as Boolean,
             serverPingStatus = values[1] as String,
             isPingLoading = values[2] as Boolean,
-            // A remote server reports its own version and cache; the on-device config path doesn't apply to it.
             serverVersion = if (isRemoteServer) loadedServerSettings?.serverVersion.orEmpty() else "0.1.8",
             serverConfigPath = if (isRemoteServer) "" else configPath,
             serverCachePath = if (isRemoteServer) loadedServerSettings?.cacheRoot.orEmpty() else cachePath,
             usesRemoteStreamingServer = isRemoteServer,
-            // Plain preference reads: changing them restarts the app unless the server in use stays the same.
-            customStreamingServerUrl = authRepository.getCustomStreamingServerUrl().orEmpty(),
-            isCustomStreamingServerEnabled = authRepository.isCustomStreamingServerEnabled(),
+            customStreamingServerUrl = values[52] as String,
+            isCustomStreamingServerEnabled = values[53] as Boolean,
             latestIntentUri = values[3] as String?,
             account = values[4] as AccountUiState,
             selectedSection = values[5] as MainSection,
@@ -447,7 +449,7 @@ class MainViewModel(
                     )
                     serverSettings.value = newSettings
                     isSeedingEnabled.value = settingsObj.optBoolean("seedingEnabled", true)
-                    // Core POSTs these back to the server; don't write to a remote server the user manages elsewhere.
+                    // Core would POST these back; leave a remote server's settings alone.
                     if (!core.usesRemoteStreamingServer) {
                         core.updateStreamingServerSettings(newSettings)
                     }
@@ -606,22 +608,19 @@ class MainViewModel(
         }
     }
 
-    /** Base URL of the streaming server in use: the on-device one or the custom remote one. */
     val streamingServerUrl: String get() = core.streamingServerUrl
 
-
-    /**
-     * Saves the remote server option and restarts the app if the server in use changes.
-     * Returns false, saving nothing, if [urlInput] is invalid, or blank while [enabled].
-     */
+    /** Restarts the app if the server in use changes. Returns false, saving nothing, if [urlInput] is invalid. */
     fun setCustomStreamingServer(enabled: Boolean, urlInput: String): Boolean {
-        val url = if (urlInput.isBlank()) null else parseStreamingServerUrl(urlInput) ?: return false
+        val url = urlInput.takeIf { it.isNotBlank() }?.let { parseStreamingServerUrl(it) ?: return false }
         if (enabled && url == null) return false
 
         val activeBefore = authRepository.getActiveCustomStreamingServerUrl()
         authRepository.setCustomStreamingServer(enabled, url)
+        customStreamingServerUrl.value = url.orEmpty()
+        isCustomStreamingServerEnabled.value = enabled
         if (authRepository.getActiveCustomStreamingServerUrl() != activeBefore) {
-            // The service is START_STICKY: left running, Android would restart it with its notification in the new process.
+            // START_STICKY: it would come back with its notification in the new process.
             appContext.stopService(Intent(appContext, ServerService::class.java))
             restartApp()
         }
@@ -1495,7 +1494,7 @@ class MainViewModel(
         noSeedsPollJob = viewModelScope.launch {
             while (true) {
                 playbackRepository.requestStreamStatistics(infoHash, fileIndex)
-                // Roundtrip to the streaming server; a slower remote reply is read on the next cycle.
+                // A slower remote reply is read on the next cycle.
                 delay(800)
                 val stats = playbackRepository.getStreamStatistics()
                 if (stats != null && stats.infoHash == infoHash) {

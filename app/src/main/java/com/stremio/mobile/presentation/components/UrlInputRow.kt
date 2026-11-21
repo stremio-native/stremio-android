@@ -23,7 +23,6 @@ import com.stremio.mobile.core.theme.AccentPurple
 import com.stremio.mobile.core.theme.GlassSurface
 import com.stremio.mobile.core.theme.MutedText
 
-/** A URL text field with a submit button and an optional error line below. */
 @Composable
 fun UrlInputRow(
     value: String,

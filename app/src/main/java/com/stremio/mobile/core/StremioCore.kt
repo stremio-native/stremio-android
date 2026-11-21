@@ -73,15 +73,13 @@ class StremioCore(context: Context) {
     var initialized = false
         private set
 
-    /** Base URL (no trailing slash) of the streaming server torrent streams are played through. */
+    /** No trailing slash. */
     var streamingServerUrl: String = DEFAULT_STREAMING_SERVER_URL
         private set
 
-    /** Whether a remote server is used instead of the on-device one. */
     var usesRemoteStreamingServer: Boolean = false
         private set
 
-    /** Uses the remote server at [baseUrl] instead of the on-device one; set once at startup. */
     fun useStreamingServer(baseUrl: String) {
         streamingServerUrl = baseUrl
         usesRemoteStreamingServer = true
@@ -169,13 +167,10 @@ class StremioCore(context: Context) {
         dispatch(Action(Action.Type.Ctx(ActionCtx(ActionCtx.Args.UpdateSettings(settings)))), Field.CTX)
     }
 
-    /**
-     * Points the core's own server requests (settings, torrent statistics) at [streamingServerUrl].
-     * Needed on every profile change: logging in resets the profile settings to defaults.
-     */
+    /** Needed on every profile change: logging in resets the profile settings. */
     fun syncProfileStreamingServerUrl(settings: com.stremio.core.types.profile.Profile.Settings) {
         if (settings.streamingServerUrl.trimEnd('/') != streamingServerUrl) {
-            // Fresh settings, not the passed snapshot, so a concurrent settings change isn't undone.
+            // Fresh settings, so a concurrent change isn't undone.
             val current = getCtx().profile.settings
             updateSettings(current.copy(streamingServerUrl = "$streamingServerUrl/"))
         }

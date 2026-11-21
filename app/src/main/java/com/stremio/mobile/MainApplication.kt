@@ -27,10 +27,10 @@ class CrashlyticsTree : Timber.Tree() {
     @Volatile
     private var hostRegex: Regex? = null
 
-    /** Keeps [host] - the user's own remote streaming server (LAN/Tailscale address) - out of crash reports. */
+    /** Hides the remote streaming server's host in reports. */
     fun redactHost(host: String) {
         val escaped = Regex.escape(host.removeSurrounding("[", "]"))
-        // Whole host only: "pc" must not match inside "pcm", but may end a sentence ("... pc.").
+        // Whole host: not inside "pcm", but may end a sentence.
         hostRegex = Regex("""(?<![\w.-])$escaped(?![\w-]|\.\w)""", RegexOption.IGNORE_CASE)
     }
 
@@ -43,9 +43,9 @@ class CrashlyticsTree : Timber.Tree() {
         return sanitized
     }
 
-    /** Sanitizes the message of [t] and of its causes, re-wrapping only the throwables whose message changed. */
-    private fun sanitizeThrowable(t: Throwable): Throwable {
-        val cause = t.cause?.takeIf { it !== t }?.let(::sanitizeThrowable)
+    /** Re-wraps [t] when its message or a cause changed; the depth cap guards against cause cycles. */
+    private fun sanitizeThrowable(t: Throwable, depth: Int = 0): Throwable {
+        val cause = t.cause?.takeIf { depth < 10 }?.let { sanitizeThrowable(it, depth + 1) }
         val message = t.message?.let(::sanitize)
         if (message == t.message && cause === t.cause) return t
         return Throwable(message, cause).also { it.stackTrace = t.stackTrace }

@@ -37,13 +37,12 @@ class AppContainer(context: Context) {
     val updateRepository = UpdateRepository(context.applicationContext)
     val apkInstaller = ApkInstaller(context.applicationContext)
 
-    /** Base URL of the remote streaming server in use, or null when the on-device server is used. */
     val customServerUrl = authRepository.getActiveCustomStreamingServerUrl()
 
     init {
         if (customServerUrl != null) {
             core.useStreamingServer(customServerUrl)
-            // In case the on-device server's sticky service outlived a previous process.
+            // Its sticky service may have outlived the previous process.
             context.stopService(Intent(context, ServerService::class.java))
         }
     }

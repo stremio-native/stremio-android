@@ -55,6 +55,7 @@ class ParseStreamingServerUrlTest {
         assertNull(parseStreamingServerUrl("http://192.168.001.010:11470"))
         assertNull(parseStreamingServerUrl("http://[fe80::1%wlan0]:11470"))
         assertNull(parseStreamingServerUrl("http://pc:11470/../x"))
+        assertNull(parseStreamingServerUrl("http://pc:11470/%2E%2e/x"))
         assertEquals("http://pc.01net.com:11470", parseStreamingServerUrl("http://pc.01net.com:11470"))
     }
 
