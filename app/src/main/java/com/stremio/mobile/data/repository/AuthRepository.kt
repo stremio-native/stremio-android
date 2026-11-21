@@ -78,6 +78,12 @@ class AuthRepository(
         preferences.edit().putBoolean("server_in_foreground", enabled).commit()
     }
 
+    /** Base URL of a remote streaming server to use instead of the on-device one, or null. */
+    fun getCustomStreamingServerUrl(): String? = preferences.getString("custom_streaming_server_url", null)
+    fun setCustomStreamingServerUrl(url: String?) {
+        preferences.edit().putString("custom_streaming_server_url", url).commit()
+    }
+
     fun isMobileDataWarning(): Boolean = preferences.getBoolean("mobile_data_warning", true)
     fun setMobileDataWarning(enabled: Boolean) {
         preferences.edit().putBoolean("mobile_data_warning", enabled).apply()

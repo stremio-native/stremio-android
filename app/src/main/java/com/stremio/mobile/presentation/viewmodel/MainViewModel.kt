@@ -25,6 +25,7 @@ import com.stremio.mobile.presentation.state.*
 import com.stremio.mobile.server.StreamingServerController
 import com.stremio.mobile.server.StreamingServerState
 import com.stremio.mobile.server.formatServerErrorMessage
+import com.stremio.mobile.server.parseStreamingServerUrl
 import com.stremio.mobile.update.ApkInstaller
 import com.stremio.mobile.update.UpdateInfo
 import com.stremio.mobile.update.UpdateRepository
@@ -325,6 +326,7 @@ class MainViewModel(
         viewModelScope.launch {
             authRepository.getProfileSettingsFlow().collect { settings ->
                 profileSettings.value = settings
+                core.syncProfileStreamingServerUrl(settings)
             }
         }
         viewModelScope.launch {
@@ -589,15 +591,33 @@ class MainViewModel(
         if (current != enabled) {
             authRepository.setServerInForeground(enabled)
             isServerInForeground.value = enabled
-            
-            val packageManager = appContext.packageManager
-            val intent = packageManager.getLaunchIntentForPackage(appContext.packageName)
-            if (intent != null) {
-                val componentName = intent.component
-                val mainIntent = Intent.makeRestartActivityTask(componentName)
-                appContext.startActivity(mainIntent)
-                Runtime.getRuntime().exit(0)
-            }
+            restartApp()
+        }
+    }
+
+    /** Base URL of the streaming server in use: the on-device one or the custom remote one. */
+    val streamingServerUrl: String get() = core.streamingServerUrl
+
+    fun getCustomStreamingServerUrl(): String = authRepository.getCustomStreamingServerUrl().orEmpty()
+
+    /** Saves the remote server URL (blank = use the on-device server) and restarts the app; false if the URL is invalid. */
+    fun setCustomStreamingServerUrl(input: String): Boolean {
+        val url = if (input.isBlank()) null else parseStreamingServerUrl(input) ?: return false
+        if (url != authRepository.getCustomStreamingServerUrl()) {
+            authRepository.setCustomStreamingServerUrl(url)
+            restartApp()
+        }
+        return true
+    }
+
+    private fun restartApp() {
+        val packageManager = appContext.packageManager
+        val intent = packageManager.getLaunchIntentForPackage(appContext.packageName)
+        if (intent != null) {
+            val componentName = intent.component
+            val mainIntent = Intent.makeRestartActivityTask(componentName)
+            appContext.startActivity(mainIntent)
+            Runtime.getRuntime().exit(0)
         }
     }
 
@@ -1411,7 +1431,7 @@ class MainViewModel(
             return true
         }
         val directUrl = runCatching { core.directUrl(option.core.stream) }.getOrNull()
-        return directUrl?.startsWith(StremioCore.STREAMING_SERVER_BASE) == true
+        return directUrl?.startsWith(core.streamingServerUrl) == true
     }
 
     private fun rememberLocalStreamSelection(option: StreamOption) {

@@ -7,6 +7,7 @@ import com.stremio.mobile.player.PlaybackManager
 import com.stremio.mobile.server.StubStreamingServerController
 import com.stremio.mobile.server.StreamingServerController
 import com.stremio.mobile.server.JniStreamingServerController
+import com.stremio.mobile.server.RemoteStreamingServerController
 
 import com.stremio.mobile.data.repository.AddonRepository
 import com.stremio.mobile.data.repository.AuthRepository
@@ -34,11 +35,20 @@ class AppContainer(context: Context) {
     val updateRepository = UpdateRepository(context.applicationContext)
     val apkInstaller = ApkInstaller(context.applicationContext)
 
-    val serverController: StreamingServerController = try {
-        JniStreamingServerController(context, useForegroundService = { authRepository.isServerInForeground() })
-    } catch (e: UnsatisfiedLinkError) {
-        Timber.e(e, "Failed to load stream_server JNI, falling back to Stub")
-        StubStreamingServerController()
+    val serverController: StreamingServerController = createServerController(context)
+
+    private fun createServerController(context: Context): StreamingServerController {
+        val customUrl = authRepository.getCustomStreamingServerUrl()
+        if (customUrl != null) {
+            core.streamingServerUrl = customUrl
+            return RemoteStreamingServerController(customUrl)
+        }
+        return try {
+            JniStreamingServerController(context, useForegroundService = { authRepository.isServerInForeground() })
+        } catch (e: UnsatisfiedLinkError) {
+            Timber.e(e, "Failed to load stream_server JNI, falling back to Stub")
+            StubStreamingServerController()
+        }
     }
 
 }

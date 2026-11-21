@@ -12,8 +12,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 
 class JniStreamingServerController(
     private val context: Context,
@@ -110,27 +108,12 @@ class JniStreamingServerController(
     private suspend fun waitForServerReady(baseUrl: String, timeoutMs: Long = 5_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
-            if (isServerReachable(baseUrl)) {
+            if (isStreamingServerReachable(baseUrl, timeoutMs = 500)) {
                 return true
             }
             delay(150)
         }
         return false
-    }
-
-    private suspend fun isServerReachable(baseUrl: String): Boolean = withContext(Dispatchers.IO) {
-        runCatching {
-            val connection = URL("$baseUrl/settings").openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 500
-            connection.readTimeout = 500
-            connection.setRequestProperty("Accept", "application/json")
-            try {
-                connection.responseCode in 200..499
-            } finally {
-                connection.disconnect()
-            }
-        }.getOrDefault(false)
     }
 
     private fun dumpServerLogsToLogcat(reason: String) {

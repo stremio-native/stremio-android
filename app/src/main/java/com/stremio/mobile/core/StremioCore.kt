@@ -73,6 +73,9 @@ class StremioCore(context: Context) {
     var initialized = false
         private set
 
+    /** Base URL (no trailing slash) of the streaming server torrent streams are played through. */
+    var streamingServerUrl: String = DEFAULT_STREAMING_SERVER_URL
+
     fun initialize() {
         if (initialized) return
         Core.addEventListener(listener)
@@ -153,6 +156,16 @@ class StremioCore(context: Context) {
 
     fun updateSettings(settings: com.stremio.core.types.profile.Profile.Settings) {
         dispatch(Action(Action.Type.Ctx(ActionCtx(ActionCtx.Args.UpdateSettings(settings)))), Field.CTX)
+    }
+
+    /**
+     * Points the core's own server requests (settings, torrent statistics) at [streamingServerUrl].
+     * Needed on every profile change: logging in resets the profile settings to defaults.
+     */
+    fun syncProfileStreamingServerUrl(settings: com.stremio.core.types.profile.Profile.Settings) {
+        if (settings.streamingServerUrl.trimEnd('/') != streamingServerUrl) {
+            updateSettings(settings.copy(streamingServerUrl = "$streamingServerUrl/"))
+        }
     }
 
     fun updateStreamingServerSettings(settings: com.stremio.core.models.StreamingServer.Settings) {
@@ -544,7 +557,7 @@ class StremioCore(context: Context) {
             is Stream.Source.Url -> source.value.url
             is Stream.Source.Tramvai -> {
                 val t = source.value
-                "$STREAMING_SERVER_BASE/${t.infoHash}/${t.fileIdx ?: STREAMING_SERVER_AUTO_FILE_INDEX}"
+                "$streamingServerUrl/${t.infoHash}/${t.fileIdx ?: STREAMING_SERVER_AUTO_FILE_INDEX}"
             }
             is Stream.Source.External -> source.value.externalUrl
             else -> null
@@ -574,7 +587,7 @@ class StremioCore(context: Context) {
     }
 
     companion object {
-        const val STREAMING_SERVER_BASE = "http://127.0.0.1:11470"
+        const val DEFAULT_STREAMING_SERVER_URL = "http://127.0.0.1:11470"
         const val STREAMING_SERVER_AUTO_FILE_INDEX = -1
         private const val DEVICE_NAME = "android"
     }

@@ -10,14 +10,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.stremio.mobile.core.theme.AccentPurple
@@ -31,7 +40,9 @@ import com.stremio.mobile.server.formatServerErrorMessage
 @Composable
 fun StreamingSettingsScreen(
     serverState: StreamingServerState,
-    serverSettings: com.stremio.core.models.StreamingServer.Settings?,
+    customServerUrl: String,
+    onSetCustomServerUrl: (String) -> Boolean,
+    serverSettings:com.stremio.core.models.StreamingServer.Settings?,
     isSeedingEnabled: Boolean,
     minSeedsThreshold: Int,
     minDownloadSpeedBps: Long,
@@ -109,6 +120,8 @@ fun StreamingSettingsScreen(
                 }
             }
         }
+
+        CustomServerUrlCard(customServerUrl = customServerUrl, onSetCustomServerUrl = onSetCustomServerUrl)
 
         if (serverSettings != null) {
             Text(
@@ -234,5 +247,72 @@ fun StreamingSettingsScreen(
             onCheckedChange = onSetAutoSwitchOnDeadStream,
             description = "Automatically play the next best stream instead of asking"
         )
+    }
+}
+
+@Composable
+private fun CustomServerUrlCard(customServerUrl: String, onSetCustomServerUrl: (String) -> Boolean) {
+    var urlInput by rememberSaveable(customServerUrl) { mutableStateOf(customServerUrl) }
+    var urlError by remember { mutableStateOf(false) }
+
+    ThemedCard(
+        modifier = Modifier.fillMaxWidth(),
+        cornerRadius = 20.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "Custom Server URL",
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "Stream through a server on another device, e.g. Stremio on your PC. " +
+                    "Leave empty to use the built-in server. Saving restarts the app.",
+                color = MutedText,
+                fontSize = 12.sp,
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                OutlinedTextField(
+                    value = urlInput,
+                    onValueChange = { urlInput = it; urlError = false },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text(text = "http://192.168.1.10:11470", color = MutedText, fontSize = 13.sp) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = GlassSurface,
+                        unfocusedContainerColor = GlassSurface,
+                        focusedBorderColor = Color(0x33FFFFFF),
+                        unfocusedBorderColor = Color(0x19FFFFFF),
+                        cursorColor = AccentPurple,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                    ),
+                )
+                ThemedButton(
+                    text = "Save",
+                    onClick = { urlError = !onSetCustomServerUrl(urlInput) },
+                    containerColor = AccentPurple,
+                )
+            }
+            if (urlError) {
+                Text(
+                    text = "Enter a valid http(s) URL, e.g. http://192.168.1.10:11470",
+                    color = Color(0xFFE57373),
+                    fontSize = 12.sp,
+                )
+            }
+        }
     }
 }
