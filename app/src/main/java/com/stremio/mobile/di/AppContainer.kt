@@ -1,9 +1,11 @@
 package com.stremio.mobile.di
 
 import android.content.Context
+import android.content.Intent
 import timber.log.Timber
 import com.stremio.mobile.core.StremioCore
 import com.stremio.mobile.player.PlaybackManager
+import com.stremio.mobile.server.ServerService
 import com.stremio.mobile.server.StubStreamingServerController
 import com.stremio.mobile.server.StreamingServerController
 import com.stremio.mobile.server.JniStreamingServerController
@@ -35,14 +37,16 @@ class AppContainer(context: Context) {
     val updateRepository = UpdateRepository(context.applicationContext)
     val apkInstaller = ApkInstaller(context.applicationContext)
 
-    val serverController: StreamingServerController = createServerController(context)
+    private val customServerUrl = authRepository.getActiveCustomStreamingServerUrl()?.also { url ->
+        core.streamingServerUrl = url
+        // In case the on-device server's sticky service outlived a previous process.
+        context.stopService(Intent(context, ServerService::class.java))
+    }
 
-    private fun createServerController(context: Context): StreamingServerController {
-        val customUrl = authRepository.getActiveCustomStreamingServerUrl()
-        if (customUrl != null) {
-            core.streamingServerUrl = customUrl
-            return RemoteStreamingServerController(customUrl)
-        }
+    val serverController: StreamingServerController =
+        customServerUrl?.let(::RemoteStreamingServerController) ?: createLocalServerController(context)
+
+    private fun createLocalServerController(context: Context): StreamingServerController {
         return try {
             JniStreamingServerController(context, useForegroundService = { authRepository.isServerInForeground() })
         } catch (e: UnsatisfiedLinkError) {

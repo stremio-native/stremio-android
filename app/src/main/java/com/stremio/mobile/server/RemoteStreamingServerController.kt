@@ -9,14 +9,28 @@ import kotlinx.coroutines.sync.withLock
 class RemoteStreamingServerController(private val baseUrl: String) : StreamingServerController {
     private val mutableState = MutableStateFlow<StreamingServerState>(StreamingServerState.Stopped)
     private val startMutex = Mutex()
+    private var lastReachableMs = 0L
     override val state: StateFlow<StreamingServerState> = mutableState
 
+    // Called before every stream list load and server-backed playback, so a recent successful probe is reused.
     override suspend fun start() {
         startMutex.withLock {
-            if (mutableState.value !is StreamingServerState.Ready) {
+            val isReady = mutableState.value is StreamingServerState.Ready
+            if (isReady && System.currentTimeMillis() - lastReachableMs < RECHECK_INTERVAL_MS) {
+                return
+            }
+            if (!isReady) {
                 mutableState.value = StreamingServerState.Starting
             }
-            mutableState.value = if (isStreamingServerReachable(baseUrl, timeoutMs = 3_000)) {
+
+            val reachable = isStreamingServerReachable(
+                baseUrl,
+                connectTimeoutMs = 1_500,
+                readTimeoutMs = 3_000,
+                acceptedCodes = 200..200,
+            )
+            mutableState.value = if (reachable) {
+                lastReachableMs = System.currentTimeMillis()
                 StreamingServerState.Ready(baseUrl)
             } else {
                 // No URL in the message: formatServerErrorMessage treats any "11470" as a local port conflict.
@@ -27,5 +41,9 @@ class RemoteStreamingServerController(private val baseUrl: String) : StreamingSe
 
     override suspend fun stop() {
         mutableState.value = StreamingServerState.Stopped
+    }
+
+    private companion object {
+        const val RECHECK_INTERVAL_MS = 30_000L
     }
 }

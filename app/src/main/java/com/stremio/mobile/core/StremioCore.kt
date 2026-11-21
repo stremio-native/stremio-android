@@ -448,7 +448,7 @@ class StremioCore(context: Context) {
 
     /**
      * Loads the Player model for [option] and emits the resolved playable URL once the core has
-     * converted the stream (torrents are routed through the local streaming server). Direct URL
+     * converted the stream (torrents are routed through the streaming server). Direct URL
      * streams are emitted immediately as a fallback.
      */
     fun resolvePlayableUrl(option: CoreStream): Flow<String> {

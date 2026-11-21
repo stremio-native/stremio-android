@@ -108,7 +108,7 @@ class JniStreamingServerController(
     private suspend fun waitForServerReady(baseUrl: String, timeoutMs: Long = 5_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
-            if (isStreamingServerReachable(baseUrl, timeoutMs = 500)) {
+            if (isStreamingServerReachable(baseUrl, connectTimeoutMs = 500)) {
                 return true
             }
             delay(150)

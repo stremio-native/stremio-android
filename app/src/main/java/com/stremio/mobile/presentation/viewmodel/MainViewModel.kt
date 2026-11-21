@@ -22,6 +22,7 @@ import com.stremio.mobile.player.PlayerTrackOption
 import com.stremio.mobile.core.theme.AppFont
 import timber.log.Timber
 import com.stremio.mobile.presentation.state.*
+import com.stremio.mobile.server.ServerService
 import com.stremio.mobile.server.StreamingServerController
 import com.stremio.mobile.server.StreamingServerState
 import com.stremio.mobile.server.formatServerErrorMessage
@@ -45,6 +46,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -326,8 +328,12 @@ class MainViewModel(
         viewModelScope.launch {
             authRepository.getProfileSettingsFlow().collect { settings ->
                 profileSettings.value = settings
-                core.syncProfileStreamingServerUrl(settings)
             }
+        }
+        viewModelScope.launch {
+            authRepository.getProfileSettingsFlow()
+                .distinctUntilChangedBy { it.streamingServerUrl }
+                .collect { core.syncProfileStreamingServerUrl(it) }
         }
         viewModelScope.launch {
             authRepository.getTraktAuthFlow().collect { traktAuth ->
@@ -612,6 +618,8 @@ class MainViewModel(
         val activeBefore = authRepository.getActiveCustomStreamingServerUrl()
         authRepository.setCustomStreamingServer(enabled, url)
         if (authRepository.getActiveCustomStreamingServerUrl() != activeBefore) {
+            // The service is START_STICKY: left running, Android would restart it with its notification in the new process.
+            appContext.stopService(Intent(appContext, ServerService::class.java))
             restartApp()
         }
         return true
@@ -1375,7 +1383,7 @@ class MainViewModel(
         streams.value = streams.value.copy(isResolving = true, error = null)
         playJob = viewModelScope.launch {
             val engine = PlayerEngine.fromProfileValue(profileSettings.value?.playerType)
-            if (streamRequiresLocalServer(option)) {
+            if (streamRequiresStreamingServer(option)) {
                 runCatching { startServerInternal() }
                     .onFailure { error ->
                         val errorMsg = "Streaming server failed to start: ${error.message ?: "Unknown error"}"
@@ -1414,7 +1422,7 @@ class MainViewModel(
                 properties = mapOf(
                     "stream_type" to option.addonTitle,
                     "player_engine" to engine.name,
-                    "is_resolving" to streamRequiresLocalServer(option)
+                    "is_resolving" to streamRequiresStreamingServer(option)
                 )
             )
             rememberLocalStreamSelection(option)
@@ -1433,12 +1441,12 @@ class MainViewModel(
         }
     }
 
-    private fun streamRequiresLocalServer(option: StreamOption): Boolean {
+    private fun streamRequiresStreamingServer(option: StreamOption): Boolean {
         if (option.core.stream.source is com.stremio.core.types.resource.Stream.Source.Tramvai) {
             return true
         }
         val directUrl = runCatching { core.directUrl(option.core.stream) }.getOrNull()
-        return directUrl?.startsWith(core.streamingServerUrl) == true
+        return directUrl?.startsWith("${core.streamingServerUrl}/") == true
     }
 
     private fun rememberLocalStreamSelection(option: StreamOption) {
@@ -1484,7 +1492,7 @@ class MainViewModel(
         noSeedsPollJob = viewModelScope.launch {
             while (true) {
                 playbackRepository.requestStreamStatistics(infoHash, fileIndex)
-                // Local JNI/HTTP roundtrip to the on-device streaming server; comfortably finishes well under this.
+                // HTTP roundtrip to the streaming server; well under this for the on-device one, may exceed it for a remote one.
                 delay(800)
                 val stats = playbackRepository.getStreamStatistics()
                 if (stats != null && stats.infoHash == infoHash) {
