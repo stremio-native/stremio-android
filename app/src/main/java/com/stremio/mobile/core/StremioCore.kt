@@ -80,7 +80,7 @@ class StremioCore(context: Context) {
     var usesRemoteStreamingServer: Boolean = false
         private set
 
-    fun useStreamingServer(baseUrl: String) {
+    fun useRemoteStreamingServer(baseUrl: String) {
         streamingServerUrl = baseUrl
         usesRemoteStreamingServer = true
     }

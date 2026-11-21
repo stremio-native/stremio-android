@@ -87,7 +87,9 @@ fun InfoSettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 ServerDetailRow(label = "Stremio Mobile Client", value = BuildConfig.VERSION_NAME)
-                ServerDetailRow(label = "Streaming Server Version", value = serverVersion)
+                if (serverVersion.isNotEmpty()) {
+                    ServerDetailRow(label = "Streaming Server Version", value = serverVersion)
+                }
                 if (serverConfigPath.isNotEmpty()) {
                     ServerDetailRow(label = "Database Config Path", value = serverConfigPath)
                 }

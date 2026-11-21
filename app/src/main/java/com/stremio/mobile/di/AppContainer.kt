@@ -10,6 +10,7 @@ import com.stremio.mobile.server.StubStreamingServerController
 import com.stremio.mobile.server.StreamingServerController
 import com.stremio.mobile.server.JniStreamingServerController
 import com.stremio.mobile.server.RemoteStreamingServerController
+import com.stremio.mobile.server.hasLocalNetworkPermission
 
 import com.stremio.mobile.data.repository.AddonRepository
 import com.stremio.mobile.data.repository.AuthRepository
@@ -41,14 +42,15 @@ class AppContainer(context: Context) {
 
     init {
         if (customServerUrl != null) {
-            core.useStreamingServer(customServerUrl)
+            core.useRemoteStreamingServer(customServerUrl)
             // Its sticky service may have outlived the previous process.
             context.stopService(Intent(context, ServerService::class.java))
         }
     }
 
     val serverController: StreamingServerController =
-        customServerUrl?.let(::RemoteStreamingServerController) ?: createLocalServerController(context)
+        customServerUrl?.let { RemoteStreamingServerController(it, hasLocalNetworkPermission = { hasLocalNetworkPermission(context) }) }
+            ?: createLocalServerController(context)
 
     private fun createLocalServerController(context: Context): StreamingServerController {
         return try {

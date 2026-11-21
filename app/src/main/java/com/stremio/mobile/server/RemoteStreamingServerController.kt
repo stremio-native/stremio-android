@@ -12,6 +12,7 @@ class RemoteStreamingServerController(
     private val baseUrl: String,
     private val probe: suspend (baseUrl: String) -> Boolean = ::probeRemoteServer,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val hasLocalNetworkPermission: () -> Boolean = { true },
 ) : StreamingServerController {
     private val mutableState = MutableStateFlow<StreamingServerState>(StreamingServerState.Stopped)
     private val startMutex = Mutex()
@@ -31,8 +32,13 @@ class RemoteStreamingServerController(
             }
 
             val reachable = try {
+                var reachable = probe(baseUrl)
                 // Retry if it was up: the first request after idle may hit Wi-Fi power save.
-                probe(baseUrl) || wasReady && run { delay(RETRY_DELAY_MS); probe(baseUrl) }
+                if (!reachable && wasReady) {
+                    delay(RETRY_DELAY_MS)
+                    reachable = probe(baseUrl)
+                }
+                reachable
             } catch (e: CancellationException) {
                 mutableState.value = previousState
                 throw e
@@ -42,7 +48,10 @@ class RemoteStreamingServerController(
                 StreamingServerState.Ready(baseUrl)
             } else {
                 // No URL: formatServerErrorMessage reads "11470" as a port conflict.
-                StreamingServerState.Failed("Remote streaming server is not reachable")
+                StreamingServerState.Failed(
+                    if (hasLocalNetworkPermission()) "Remote streaming server is not reachable"
+                    else "Remote streaming server is not reachable. For a server on your Wi-Fi, allow Nearby devices for this app."
+                )
             }
         }
     }

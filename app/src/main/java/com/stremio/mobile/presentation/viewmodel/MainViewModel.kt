@@ -612,7 +612,7 @@ class MainViewModel(
 
     /** Restarts the app if the server in use changes. Returns false, saving nothing, if [urlInput] is invalid. */
     fun setCustomStreamingServer(enabled: Boolean, urlInput: String): Boolean {
-        val url = urlInput.takeIf { it.isNotBlank() }?.let { parseStreamingServerUrl(it) ?: return false }
+        val url = if (urlInput.isBlank()) null else parseStreamingServerUrl(urlInput) ?: return false
         if (enabled && url == null) return false
 
         val activeBefore = authRepository.getActiveCustomStreamingServerUrl()

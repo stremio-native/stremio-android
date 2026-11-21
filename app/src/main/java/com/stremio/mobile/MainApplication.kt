@@ -30,7 +30,7 @@ class CrashlyticsTree : Timber.Tree() {
     /** Hides the remote streaming server's host in reports. */
     fun redactHost(host: String) {
         val escaped = Regex.escape(host.removeSurrounding("[", "]"))
-        // Whole host: not inside "pcm", but may end a sentence.
+        // Whole host only ("pc" not in "pcm" or "pc.lan"); a sentence-ending "." still matches.
         hostRegex = Regex("""(?<![\w.-])$escaped(?![\w-]|\.\w)""", RegexOption.IGNORE_CASE)
     }
 
@@ -79,7 +79,7 @@ class MainApplication : Application(), SingletonImageLoader.Factory {
             Timber.e(e, "Failed to set TMPDIR environment variable")
         }
         container = AppContainer(this)
-        container.customServerUrl?.let { crashlyticsTree.redactHost(java.net.URI(it).host) }
+        container.customServerUrl?.let { runCatching { java.net.URI(it).host }.getOrNull() }?.let(crashlyticsTree::redactHost)
         val analyticsEnabled = container.authRepository.isAnalyticsEnabled()
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(analyticsEnabled)
 

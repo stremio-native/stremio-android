@@ -35,10 +35,15 @@ class ParseStreamingServerUrlTest {
     }
 
     @Test
+    fun `defaults to http when the scheme is missing`() {
+        assertEquals("http://192.168.1.10:11470", parseStreamingServerUrl("192.168.1.10:11470"))
+        assertEquals("http://pc", parseStreamingServerUrl(" pc/ "))
+    }
+
+    @Test
     fun `rejects blank and non-http input`() {
         assertNull(parseStreamingServerUrl(""))
         assertNull(parseStreamingServerUrl("   "))
-        assertNull(parseStreamingServerUrl("192.168.1.10:11470"))
         assertNull(parseStreamingServerUrl("ftp://pc:11470"))
         assertNull(parseStreamingServerUrl("http://"))
     }
